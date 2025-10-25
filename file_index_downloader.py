@@ -1,8 +1,8 @@
 """
-Canvas 完整文件索引下载器
+Canvas full file index downloader.
 
-自动下载所有课程的所有文件，按课程和模块组织文件夹结构
-并上传到 OpenAI Vector Store
+Automatically download every file for each course, organize them by course and module,
+and optionally upload supported files to an OpenAI Vector Store.
 """
 
 import os
@@ -29,15 +29,15 @@ except ImportError:
     OpenAI = None
     OPENAI_VERSION = None
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
 console = Console()
 
-# 下载根目录
+# Root directory for downloaded artifacts
 DOWNLOAD_ROOT = Path("file_index")
 
-# 下载统计
+# Aggregated download statistics
 stats = {
     "courses": 0,
     "modules": 0,
@@ -52,27 +52,27 @@ stats = {
     "errors": []
 }
 
-# Vector Store 配置
+# Vector Store configuration
 SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.json', '.csv'}
 MAX_FILE_SIZE = 512 * 1024 * 1024  # 512 MB (OpenAI limit)
 
 
 def sanitize_filename(name: str) -> str:
-    """清理文件名/文件夹名，移除非法字符"""
-    # Windows不允许的字符
+    """Clean file or folder names by removing illegal characters."""
+    # Characters that are not allowed on Windows
     illegal_chars = '<>:"/\\|?*'
     for char in illegal_chars:
         name = name.replace(char, '_')
-    # 移除前后空格和点
+    # Remove leading/trailing spaces and dots
     name = name.strip('. ')
-    # 限制长度
+    # Enforce a safe length
     if len(name) > 200:
         name = name[:200]
     return name or "unnamed"
 
 
 async def fetch_all_pages(session, url, headers, params=None):
-    """获取所有分页数据"""
+    """Retrieve all pages of a paginated Canvas API endpoint."""
     all_data = []
     current_url = url
     
@@ -86,7 +86,7 @@ async def fetch_all_pages(session, url, headers, params=None):
                     else:
                         all_data.append(data)
                     
-                    # 检查是否有下一页
+                    # Inspect pagination headers for the next page
                     link_header = response.headers.get('Link', '')
                     current_url = None
                     if link_header:
@@ -94,46 +94,49 @@ async def fetch_all_pages(session, url, headers, params=None):
                             if 'rel="next"' in link:
                                 current_url = link[link.find('<')+1:link.find('>')]
                                 break
-                    params = None  # 后续请求不需要params
+                    params = None  # Subsequent requests should not include original params
                 else:
-                    console.print(f"⚠️  请求失败 ({response.status}): {current_url}", style="yellow")
+                    console.print(
+                        f"⚠️  Request failed ({response.status}): {current_url}",
+                        style="yellow",
+                    )
                     break
                     
         except Exception as e:
-            console.print(f"❌ 请求异常: {e}", style="red")
+            console.print(f"❌ Request error: {e}", style="red")
             break
     
     return all_data
 
 
 async def download_file(session, file_info, file_path):
-    """下载单个文件"""
+    """Download a single file payload."""
     file_url = file_info.get('url')
     file_name = file_info.get('display_name', 'unnamed')
     file_size = file_info.get('size', 0)
     
     if not file_url:
-        return False, "无下载链接"
+        return False, "Missing download URL"
     
-    # 如果文件已存在且大小匹配，跳过
+    # Skip downloads when the file already exists and matches the expected size
     if file_path.exists() and file_path.stat().st_size == file_size:
         stats["files_skipped"] += 1
-        return True, "已存在"
+        return True, "Already exists"
     
     try:
         async with session.get(file_url) as response:
             if response.status == 200:
-                # 确保目录存在
+                # Ensure parent directories exist
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # 下载文件
+                # Stream file contents to disk
                 with open(file_path, 'wb') as f:
                     async for chunk in response.content.iter_chunked(8192):
                         f.write(chunk)
                 
                 stats["files_downloaded"] += 1
                 stats["total_size"] += file_size
-                return True, "成功"
+                return True, "Success"
             else:
                 return False, f"HTTP {response.status}"
                 
@@ -142,8 +145,8 @@ async def download_file(session, file_info, file_path):
 
 
 async def get_courses(session, canvas_url, headers):
-    """获取所有课程"""
-    console.print("\n📚 获取课程列表...", style="cyan bold")
+    """Retrieve all active courses."""
+    console.print("\n📚 Fetching course list...", style="cyan bold")
     
     courses = await fetch_all_pages(
         session,
@@ -152,22 +155,22 @@ async def get_courses(session, canvas_url, headers):
         params={"enrollment_state": "active", "per_page": 100}
     )
     
-    console.print(f"✓ 找到 {len(courses)} 个课程\n", style="green")
+    console.print(f"✓ Located {len(courses)} courses\n", style="green")
     return courses
 
 
 def select_courses(courses):
-    """让用户从课程列表中进行选择"""
+    """Prompt the user to select courses to download."""
     if not courses:
         return []
 
-    console.print("输入课程序号进行选择，可使用以下格式:", style="cyan")
-    console.print("  • 输入 `all` 或直接回车下载全部课程", style="dim")
-    console.print("  • 输入单个数字选择对应课程 (例如: 3)", style="dim")
-    console.print("  • 输入多个数字并用逗号分隔选择多个课程 (例如: 1,3,5)\n", style="dim")
+    console.print("Enter course indices using one of the formats below:", style="cyan")
+    console.print("  • Type `all` or press Enter to download every course", style="dim")
+    console.print("  • Type a single index to select one course (for example: 3)", style="dim")
+    console.print("  • Type multiple indices separated by commas (for example: 1,3,5)\n", style="dim")
 
     while True:
-        choice = console.input("选择要下载的课程 (默认 all): ").strip().lower()
+        choice = console.input("Select courses to download (default all): ").strip().lower()
 
         if choice in ("", "all"):
             return courses
@@ -188,15 +191,15 @@ def select_courses(courses):
                 raise ValueError
 
             selected = [courses[i] for i in sorted(selected_indices)]
-            console.print(f"✓ 已选择 {len(selected)} 门课程\n", style="green")
+            console.print(f"✓ Selected {len(selected)} course(s)\n", style="green")
             return selected
 
         except ValueError:
-            console.print("⚠️  输入无效，请输入课程编号或 `all`", style="yellow")
+            console.print("⚠️  Invalid input, enter course numbers or `all`", style="yellow")
 
 
 async def get_course_modules(session, canvas_url, headers, course_id):
-    """获取课程的所有模块"""
+    """Fetch every module for a given course."""
     modules = await fetch_all_pages(
         session,
         f"{canvas_url}/api/v1/courses/{course_id}/modules",
@@ -207,7 +210,7 @@ async def get_course_modules(session, canvas_url, headers, course_id):
 
 
 async def get_module_items(session, canvas_url, headers, course_id, module_id):
-    """获取模块的所有项目"""
+    """Retrieve all items inside a module."""
     items = await fetch_all_pages(
         session,
         f"{canvas_url}/api/v1/courses/{course_id}/modules/{module_id}/items",
@@ -218,7 +221,7 @@ async def get_module_items(session, canvas_url, headers, course_id, module_id):
 
 
 async def get_course_files(session, canvas_url, headers, course_id):
-    """获取课程的所有文件（Files区域）"""
+    """Collect every file exposed in the course Files area."""
     try:
         files = await fetch_all_pages(
             session,
@@ -228,7 +231,7 @@ async def get_course_files(session, canvas_url, headers, course_id):
         )
         return files
     except:
-        # 如果直接获取失败，尝试通过文件夹方式
+        # As a fallback, iterate through folders manually.
         try:
             folders = await fetch_all_pages(
                 session,
@@ -253,7 +256,7 @@ async def get_course_files(session, canvas_url, headers, course_id):
 
 
 async def get_file_info(session, canvas_url, headers, file_id):
-    """获取文件详细信息"""
+    """Retrieve detailed metadata for a file."""
     try:
         async with session.get(
             f"{canvas_url}/api/v1/files/{file_id}",
@@ -267,12 +270,12 @@ async def get_file_info(session, canvas_url, headers, file_id):
 
 
 def can_upload_to_vector_store(file_path: Path) -> bool:
-    """检查文件是否可以上传到 Vector Store"""
-    # 检查扩展名
+    """Return True when the file meets the Vector Store upload requirements."""
+    # Validate extension support
     if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return False
     
-    # 检查文件大小
+    # Enforce the maximum file size
     try:
         if file_path.stat().st_size > MAX_FILE_SIZE:
             return False
@@ -283,7 +286,7 @@ def can_upload_to_vector_store(file_path: Path) -> bool:
 
 
 def upload_to_vector_store(client, vector_store_id, file_path, course_name):
-    """上传文件到 Vector Store"""
+    """Upload a file to the specified Vector Store."""
     try:
         with open(file_path, 'rb') as f:
             file_response = client.files.create(
@@ -291,7 +294,7 @@ def upload_to_vector_store(client, vector_store_id, file_path, course_name):
                 purpose='assistants'
             )
         
-        # 将文件添加到 Vector Store（不是 beta API）
+    # Attach the uploaded file to the Vector Store (non-beta API)
         client.vector_stores.files.create(
             vector_store_id=vector_store_id,
             file_id=file_response.id
@@ -305,46 +308,46 @@ def upload_to_vector_store(client, vector_store_id, file_path, course_name):
         stats["errors"].append({
             "course": course_name,
             "file": file_path.name,
-            "error": f"Vector Store上传失败: {str(e)}"
+            "error": f"Vector Store upload failed: {str(e)}"
         })
         return False, str(e)
 
 
 def create_vector_store_for_course(client, course_name, course_code):
-    """为课程创建 Vector Store"""
+    """Create a dedicated Vector Store for the course."""
     try:
         vector_store_name = f"{course_code}_{course_name}" if course_code else course_name
-        
-        # 使用正确的 API 路径（不是 beta）
+
+        # Use the production Vector Store API (not the beta endpoints)
         vector_store = client.vector_stores.create(
-            name=vector_store_name[:100]  # 限制长度
+            name=vector_store_name[:100]  # Enforce OpenAI naming limits
         )
         
         stats["vector_stores_created"] += 1
         return vector_store.id
         
     except AttributeError as e:
-        console.print(f"❌ Vector Stores API 不可用: {e}", style="red")
-        console.print("   请更新 OpenAI 库: pip install --upgrade openai", style="yellow")
+        console.print(f"❌ Vector Stores API unavailable: {e}", style="red")
+        console.print("   Please update the OpenAI library: pip install --upgrade openai", style="yellow")
         return None
     except Exception as e:
-        console.print(f"❌ 创建 Vector Store 失败: {e}", style="red")
+        console.print(f"❌ Failed to create Vector Store: {e}", style="red")
         import traceback
         console.print(traceback.format_exc(), style="red dim")
         return None
 
 
 async def process_course(session, canvas_url, headers, course, progress, task_id):
-    """处理单个课程"""
+    """Download files for a single course and update aggregate statistics."""
     course_id = course['id']
     course_name = sanitize_filename(course.get('name', f'Course_{course_id}'))
     course_code = course.get('course_code', '')
     
-    # 创建课程文件夹
+    # Create a folder dedicated to this course
     course_path = DOWNLOAD_ROOT / f"{course_code}_{course_name}" if course_code else DOWNLOAD_ROOT / course_name
     course_path.mkdir(parents=True, exist_ok=True)
     
-    progress.update(task_id, description=f"[cyan]处理课程: {course_name}")
+    progress.update(task_id, description=f"[cyan]Processing course: {course_name}")
     
     course_stats = {
         "modules": 0,
@@ -355,7 +358,7 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
     }
     
     # ================================================
-    # 1. 处理 Modules 中的文件
+    # 1. Process files referenced in Modules
     # ================================================
     modules = await get_course_modules(session, canvas_url, headers, course_id)
     
@@ -365,12 +368,12 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
         
         course_stats["modules"] += 1
         
-        # 获取模块项目
+    # Gather module items when they were not pre-included
         items = module.get('items', [])
         if not items:
             items = await get_module_items(session, canvas_url, headers, course_id, module['id'])
         
-        # 处理模块中的文件
+    # Download module file entries
         for item in items:
             if item.get('type') == 'File':
                 file_id = item.get('content_id')
@@ -395,13 +398,13 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
                             })
     
     # ================================================
-    # 2. 处理 Files 区域的文件
+    # 2. Download files from the Files area
     # ================================================
     files = await get_course_files(session, canvas_url, headers, course_id)
     
     for file_info in files:
         file_name = sanitize_filename(file_info.get('display_name', 'unnamed'))
-        # 将Files区域的文件放在单独的文件夹中
+    # Files area assets live under a dedicated folder
         file_path = course_path / "Files" / file_name
         
         success, msg = await download_file(session, file_info, file_path)
@@ -426,101 +429,101 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
 
 
 async def main(skip_download=False):
-    """主函数
-    
+    """Drive the download workflow and optional Vector Store upload.
+
     Args:
-        skip_download: 如果为True，跳过下载直接上传已有文件到Vector Store
+        skip_download: When True, skip downloading and upload existing files only.
     """
-    
-    # 打印欢迎信息
+
+    # Display banner
     console.print("\n" + "="*70, style="cyan bold")
     if skip_download:
-        console.print("☁️  Canvas 文件上传到 Vector Store", style="cyan bold")
+        console.print("☁️  Canvas file upload to Vector Store", style="cyan bold")
     else:
-        console.print("📦 Canvas 完整文件索引下载器 + Vector Store 上传", style="cyan bold")
+        console.print("📦 Canvas full file index downloader + Vector Store upload", style="cyan bold")
     console.print("="*70 + "\n", style="cyan bold")
     
-    # 检查环境变量
+    # Validate required environment variables
     canvas_url = os.getenv("CANVAS_URL")
     canvas_token = os.getenv("CANVAS_ACCESS_TOKEN")
     openai_api_key = os.getenv("OPENAI_API_KEY")
     
     if not canvas_url or not canvas_token:
-        console.print("❌ 错误：未找到 Canvas 配置", style="red bold")
-        console.print("请确保 .env 文件包含：", style="yellow")
+        console.print("❌ Error: Canvas configuration missing", style="red bold")
+        console.print("Ensure the .env file includes:", style="yellow")
         console.print("  - CANVAS_URL", style="yellow")
         console.print("  - CANVAS_ACCESS_TOKEN", style="yellow")
         return
     
     console.print(f"✓ Canvas URL: {canvas_url}", style="green")
-    console.print(f"✓ Canvas Token 已配置", style="green")
-    console.print(f"✓ 下载目录: {DOWNLOAD_ROOT.absolute()}", style="green")
+    console.print("✓ Canvas token configured", style="green")
+    console.print(f"✓ Download directory: {DOWNLOAD_ROOT.absolute()}", style="green")
     
-    # 检查 OpenAI 配置
+    # Inspect OpenAI configuration
     upload_to_openai = False
     openai_client = None
     
     if openai_api_key:
         if OpenAI is None:
-            console.print("⚠️  openai 库未安装，将跳过 Vector Store 上传", style="yellow")
-            console.print("   安装命令: pip install 'openai>=1.20.0'", style="dim")
+            console.print("⚠️  The openai package is not installed; skipping Vector Store upload", style="yellow")
+            console.print("   Install with: pip install 'openai>=1.20.0'", style="dim")
         else:
             try:
-                # 显示当前版本
+                # Display the installed version
                 if OPENAI_VERSION:
-                    console.print(f"✓ OpenAI 库版本: {OPENAI_VERSION}", style="green")
+                    console.print(f"✓ OpenAI package version: {OPENAI_VERSION}", style="green")
                 
-                # 创建 OpenAI 客户端（需要 assistants=v2 beta header）
+                # Create the OpenAI client (requires assistants=v2 header)
                 openai_client = OpenAI(
                     api_key=openai_api_key,
                     default_headers={"OpenAI-Beta": "assistants=v2"}
                 )
                 
-                console.print(f"✓ OpenAI API 已配置", style="green")
+                console.print("✓ OpenAI API configured", style="green")
                 
-                # 尝试验证 Vector Stores API（通过实际调用测试）
+                # Verify Vector Stores API access with a lightweight call
                 try:
-                    # 测试是否可以访问 vector_stores API（不是 beta！）
+                    # Validate that the production vector_stores API is reachable
                     test_list = openai_client.vector_stores.list(limit=1)
-                    console.print(f"✓ Vector Stores API 可用", style="green")
+                    console.print("✓ Vector Stores API reachable", style="green")
                     upload_to_openai = True
                 except AttributeError as ae:
-                    console.print("❌ Vector Stores API 不可用 (API 结构问题)", style="red")
-                    console.print(f"   错误: {ae}", style="yellow")
-                    console.print("   请确认 OpenAI 库版本 >= 1.20.0", style="yellow")
+                    console.print("❌ Vector Stores API unavailable (client attribute missing)", style="red")
+                    console.print(f"   Error: {ae}", style="yellow")
+                    console.print("   Confirm that openai>=1.20.0 is installed", style="yellow")
                     openai_client = None
                 except Exception as ve:
-                    # API 调用失败但结构存在，可能是权限或其他问题
-                    console.print(f"⚠️  Vector Stores API 测试失败: {ve}", style="yellow")
-                    console.print("   将尝试继续使用（可能在实际上传时工作）", style="dim")
+                    # API is present but the call failed (permissions or transient error)
+                    console.print(f"⚠️  Vector Stores API test failed: {ve}", style="yellow")
+                    console.print("   Continuing anyway; upload may still succeed", style="dim")
                     upload_to_openai = True
                     
             except Exception as e:
-                console.print(f"⚠️  OpenAI 初始化失败: {e}", style="yellow")
+                console.print(f"⚠️  OpenAI initialization failed: {e}", style="yellow")
                 import traceback
                 console.print(traceback.format_exc()[:500], style="red dim")
     else:
-        console.print("⚠️  未配置 OpenAI API Key，将跳过 Vector Store 上传", style="yellow")
-        console.print("   需要配置: OPENAI_API_KEY", style="dim")
+        console.print("⚠️  OPENAI_API_KEY missing; skipping Vector Store upload", style="yellow")
+        console.print("   Please set: OPENAI_API_KEY", style="dim")
     
     console.print()
     
-    # 创建下载目录
+    # Ensure the download directory exists
     DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     
-    # 如果只上传，检查文件夹是否存在
+    # When running upload-only mode, validate directory contents
     if skip_download:
         if not DOWNLOAD_ROOT.exists() or not any(DOWNLOAD_ROOT.iterdir()):
-            console.print("❌ 错误：file_index 文件夹不存在或为空", style="red bold")
-            console.print(f"请先运行下载命令或确保文件已存在于: {DOWNLOAD_ROOT.absolute()}", style="yellow")
+            console.print("❌ Error: the file_index directory is missing or empty", style="red bold")
+            console.print(f"Run the download mode first or populate: {DOWNLOAD_ROOT.absolute()}", style="yellow")
             return
         
-        console.print(f"✓ 找到下载文件夹: {DOWNLOAD_ROOT.absolute()}", style="green")
+        console.print(f"✓ Located download folder: {DOWNLOAD_ROOT.absolute()}", style="green")
     
     start_time = datetime.now()
     
     # ================================================
-    # 下载部分（可选）
+    # Optional download phase
     # ================================================
     if not skip_download:
         headers = {
@@ -529,35 +532,35 @@ async def main(skip_download=False):
         }
         
         async with aiohttp.ClientSession() as session:
-            # 获取所有课程
+            # Fetch every course
             courses = await get_courses(session, canvas_url, headers)
             
             if not courses:
-                console.print("⚠️  未找到任何课程", style="yellow")
+                console.print("⚠️  No courses found", style="yellow")
                 return
             
-            # 显示课程列表
-            console.print("📋 课程列表:", style="cyan bold")
+            # Display a course index for selection
+            console.print("📋 Course list:", style="cyan bold")
             for i, course in enumerate(courses, 1):
                 console.print(f"  {i}. {course.get('name', 'N/A')} (ID: {course['id']})", style="dim")
             console.print()
 
             courses = select_courses(courses)
             if not courses:
-                console.print("⚠️  没有可下载的课程", style="yellow")
+                console.print("⚠️  No courses selected for download", style="yellow")
                 return
             
-            # 询问是否继续
-            console.print(f"将下载 {len(courses)} 个课程的所有文件", style="yellow bold")
-            response = console.input("是否继续? (y/n): ")
+            # Confirm before proceeding
+            console.print(f"Downloading all files for {len(courses)} course(s)", style="yellow bold")
+            response = console.input("Continue? (y/n): ")
             
             if response.lower() != 'y':
-                console.print("已取消", style="yellow")
+                console.print("Operation cancelled", style="yellow")
                 return
             
             console.print()
             
-            # 开始下载
+            # Start the download workflow
             with Progress(
                 SpinnerColumn(),
                 *Progress.get_default_columns(),
@@ -565,7 +568,7 @@ async def main(skip_download=False):
                 console=console
             ) as progress:
                 main_task = progress.add_task(
-                    "[cyan]总体进度",
+                    "[cyan]Overall progress",
                     total=len(courses)
                 )
                 
@@ -576,17 +579,17 @@ async def main(skip_download=False):
                     
                     progress.update(main_task, advance=1)
     else:
-        console.print("⏩ 跳过下载，直接处理已有文件\n", style="yellow")
+        console.print("⏩ Skipping downloads, processing existing files\n", style="yellow")
     
     # ================================================
-    # 上传到 OpenAI Vector Store
+    # Upload to OpenAI Vector Store
     # ================================================
     if upload_to_openai and openai_client:
         console.print("\n" + "="*70, style="magenta bold")
-        console.print("☁️  上传文件到 OpenAI Vector Store", style="magenta bold")
+        console.print("☁️  Uploading files to the OpenAI Vector Store", style="magenta bold")
         console.print("="*70 + "\n", style="magenta bold")
         
-        # 获取所有已下载的文件并按课程组织
+        # Aggregate downloaded files per course
         course_files = {}
         
         for course_folder in DOWNLOAD_ROOT.iterdir():
@@ -594,7 +597,7 @@ async def main(skip_download=False):
                 course_name = course_folder.name
                 files_to_upload = []
                 
-                # 收集所有可上传的文件
+                # Collect files that meet upload requirements
                 for file_path in course_folder.rglob('*'):
                     if file_path.is_file() and can_upload_to_vector_store(file_path):
                         files_to_upload.append(file_path)
@@ -603,7 +606,11 @@ async def main(skip_download=False):
                     course_files[course_name] = files_to_upload
         
         if course_files:
-            console.print(f"找到 {len(course_files)} 个课程，共 {sum(len(files) for files in course_files.values())} 个可上传文件\n", style="green")
+            console.print(
+                f"Identified {len(course_files)} course folder(s) with "
+                f"{sum(len(files) for files in course_files.values())} uploadable file(s)\n",
+                style="green",
+            )
             
             with Progress(
                 SpinnerColumn(),
@@ -612,17 +619,17 @@ async def main(skip_download=False):
                 console=console
             ) as progress:
                 upload_task = progress.add_task(
-                    "[magenta]上传到 Vector Store",
+                    "[magenta]Uploading to Vector Store",
                     total=len(course_files)
                 )
                 
-                # 保存 Vector Store 信息
+                # Persist Vector Store metadata for later
                 vector_stores_info = {}
                 
                 for course_name, files in course_files.items():
-                    progress.update(upload_task, description=f"[magenta]处理: {course_name[:40]}")
+                    progress.update(upload_task, description=f"[magenta]Processing: {course_name[:40]}")
                     
-                    # 为每个课程创建一个 Vector Store
+                    # Create one Vector Store per course
                     vector_store_id = create_vector_store_for_course(openai_client, course_name, "")
                     
                     if vector_store_id:
@@ -631,7 +638,7 @@ async def main(skip_download=False):
                             "files": []
                         }
                         
-                        # 上传文件
+                        # Upload each supported file
                         for file_path in files:
                             success, file_id = upload_to_vector_store(
                                 openai_client,
@@ -646,55 +653,55 @@ async def main(skip_download=False):
                                     "file_id": file_id
                                 })
                             
-                            # 避免速率限制
+                            # Respect rate limits by spacing requests slightly
                             await asyncio.sleep(0.1)
                     
                     progress.update(upload_task, advance=1)
                 
-                # 保存 Vector Store 映射
+                # Write Vector Store mapping to disk
                 vector_store_mapping_path = DOWNLOAD_ROOT / "vector_stores_mapping.json"
                 with open(vector_store_mapping_path, 'w', encoding='utf-8') as f:
                     json.dump(vector_stores_info, f, indent=2, ensure_ascii=False)
                 
-                console.print(f"\n✓ Vector Store 映射已保存: {vector_store_mapping_path}", style="green")
+                console.print(f"\n✓ Saved Vector Store mapping to: {vector_store_mapping_path}", style="green")
         else:
-            console.print("⚠️  没有找到可上传到 Vector Store 的文件", style="yellow")
+            console.print("⚠️  No files qualified for Vector Store upload", style="yellow")
     
-    # 完成
+    # Wrap up summary
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
     
     console.print("\n" + "="*70, style="green bold")
-    console.print("✅ 下载完成！", style="green bold")
+    console.print("✅ Download phase complete!", style="green bold")
     console.print("="*70 + "\n", style="green bold")
     
-    # 统计表格
-    table = Table(title="下载与上传统计", show_header=True)
-    table.add_column("项目", style="cyan", width=30)
-    table.add_column("数量", style="green", justify="right", width=15)
-    
-    table.add_row("━━━━ 下载统计 ━━━━", "", style="bold cyan")
-    table.add_row("课程总数", str(stats["courses"]))
-    table.add_row("模块总数", str(stats["modules"]))
-    table.add_row("文件总数", str(stats["files_total"]))
-    table.add_row("成功下载", str(stats["files_downloaded"]))
-    table.add_row("已跳过（已存在）", str(stats["files_skipped"]))
-    table.add_row("下载失败", str(stats["files_failed"]))
-    table.add_row("总大小", f"{stats['total_size'] / (1024*1024):.2f} MB")
-    
+    # Build summary table
+    table = Table(title="Download and Upload Summary", show_header=True)
+    table.add_column("Metric", style="cyan", width=30)
+    table.add_column("Value", style="green", justify="right", width=15)
+
+    table.add_row("━━━━ Download stats ━━━━", "", style="bold cyan")
+    table.add_row("Courses processed", str(stats["courses"]))
+    table.add_row("Modules processed", str(stats["modules"]))
+    table.add_row("Files discovered", str(stats["files_total"]))
+    table.add_row("Files downloaded", str(stats["files_downloaded"]))
+    table.add_row("Files skipped (existing)", str(stats["files_skipped"]))
+    table.add_row("Download failures", str(stats["files_failed"]))
+    table.add_row("Total size", f"{stats['total_size'] / (1024*1024):.2f} MB")
+
     if upload_to_openai:
         table.add_row("━━━━ Vector Store ━━━━", "", style="bold magenta")
-        table.add_row("Vector Stores 创建", str(stats["vector_stores_created"]))
-        table.add_row("文件上传成功", str(stats["files_uploaded_to_vector_store"]))
-        table.add_row("文件上传失败", str(stats["files_upload_failed"]))
-    
+        table.add_row("Vector Stores created", str(stats["vector_stores_created"]))
+        table.add_row("Files uploaded", str(stats["files_uploaded_to_vector_store"]))
+        table.add_row("Upload failures", str(stats["files_upload_failed"]))
+
     table.add_row("━━━━━━━━━━━━", "", style="bold")
-    table.add_row("总用时", f"{duration:.1f} 秒")
+    table.add_row("Total duration", f"{duration:.1f} s")
     
     console.print(table)
     console.print()
     
-    # 保存下载报告
+    # Persist download report
     report = {
         "timestamp": datetime.now().isoformat(),
         "canvas_url": canvas_url,
@@ -706,17 +713,17 @@ async def main(skip_download=False):
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     
-    console.print(f"📄 下载报告已保存: {report_path}", style="dim")
+    console.print(f"📄 Saved report: {report_path}", style="dim")
     
-    # 如果有错误，显示错误列表
+    # Display a condensed error table when applicable
     if stats["errors"]:
-        console.print(f"\n⚠️  {len(stats['errors'])} 个文件下载失败:", style="yellow bold")
+        console.print(f"\n⚠️  {len(stats['errors'])} file(s) failed during download:", style="yellow bold")
         error_table = Table(show_header=True)
-        error_table.add_column("课程", style="cyan")
-        error_table.add_column("文件", style="white")
-        error_table.add_column("错误", style="red")
+        error_table.add_column("Course", style="cyan")
+        error_table.add_column("File", style="white")
+        error_table.add_column("Error", style="red")
         
-        for error in stats["errors"][:20]:  # 只显示前20个
+        for error in stats["errors"][:20]:  # Limit display to first 20 entries
             error_table.add_row(
                 error.get("course", "N/A"),
                 error.get("file", "N/A"),
@@ -726,26 +733,26 @@ async def main(skip_download=False):
         console.print(error_table)
         
         if len(stats["errors"]) > 20:
-            console.print(f"\n... 还有 {len(stats['errors']) - 20} 个错误未显示", style="dim")
-    
-    console.print(f"\n📁 文件保存位置: {DOWNLOAD_ROOT.absolute()}", style="green bold")
+            console.print(f"\n... {len(stats['errors']) - 20} additional errors omitted", style="dim")
+
+    console.print(f"\n📁 Files stored at: {DOWNLOAD_ROOT.absolute()}", style="green bold")
 
 
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Canvas 文件下载器和 Vector Store 上传工具"
+        description="Canvas file downloader and Vector Store uploader"
     )
     parser.add_argument(
         "--upload-only",
         action="store_true",
-        help="只上传已下载的文件到 Vector Store，跳过下载步骤"
+        help="Upload previously downloaded files to the Vector Store without downloading"
     )
     parser.add_argument(
         "--skip-download",
         action="store_true",
-        help="同 --upload-only（别名）"
+        help="Alias for --upload-only"
     )
     
     args = parser.parse_args()
@@ -754,13 +761,13 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(skip_download=skip_download))
     except KeyboardInterrupt:
-        console.print("\n\n⚠️  用户中断操作", style="yellow")
+        console.print("\n\n⚠️  Operation interrupted by user", style="yellow")
         if stats['files_downloaded'] > 0:
-            console.print(f"已下载: {stats['files_downloaded']} 个文件", style="dim")
+            console.print(f"Downloaded: {stats['files_downloaded']} file(s)", style="dim")
         if stats['files_uploaded_to_vector_store'] > 0:
-            console.print(f"已上传: {stats['files_uploaded_to_vector_store']} 个文件", style="dim")
+            console.print(f"Uploaded: {stats['files_uploaded_to_vector_store']} file(s)", style="dim")
     except Exception as e:
-        console.print(f"\n❌ 发生错误: {e}", style="red bold")
+        console.print(f"\n❌ Unexpected error: {e}", style="red bold")
         import traceback
         console.print(traceback.format_exc(), style="red dim")
 

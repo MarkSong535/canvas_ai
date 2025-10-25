@@ -192,7 +192,7 @@ def agglomerate_stream_deltas(
         if stream_delta.content:
             accumulated_content += stream_delta.content
         if stream_delta.tool_calls:
-            for tool_call_delta in stream_delta.tool_calls:  # ?ormally there should be only one call at a time
+            for tool_call_delta in stream_delta.tool_calls:  # Normally there should be only one call at a time
                 # Extend accumulated_tool_calls list to accommodate the new tool call if needed
                 if tool_call_delta.index is not None:
                     if tool_call_delta.index not in accumulated_tool_calls:

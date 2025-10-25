@@ -69,7 +69,7 @@ class GeneralAgent(AsyncMultiStepAgent):
             **kwargs,
         )
 
-        # 支持 dict 或对象形式的 config
+    # Accept both dict- and object-style configuration containers
         template_path_value = self.config.get("template_path") if isinstance(self.config, dict) else self.config.template_path
         template_path = assemble_project_path(template_path_value)
         with open(template_path, "r", encoding="utf-8") as f:

@@ -1,6 +1,6 @@
 """
-DeepResearchAgent - 最小化框架模板
-此文件仅导入核心模块，不包含高级工具
+DeepResearchAgent – minimal framework template.
+This module exposes only the core tool interfaces.
 """
 
 from .tools import (

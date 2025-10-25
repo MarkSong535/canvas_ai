@@ -1,29 +1,28 @@
-# 核心依赖
+# Core dependencies
 openai>=1.0.0
 pydantic>=2.0.0
 jinja2>=3.0.0
 pyyaml>=6.0.0
 
-# 配置管理
+# Configuration management
 mmengine>=0.10.0
 python-dotenv>=1.0.0
 
-# 异步和并发
+# Async and concurrency
 asyncio
 aiohttp>=3.9.0
 
-# 日志和可视化
+# Logging and visualization
 rich>=13.0.0
 
-# 工具相关
+# Tool integrations
 huggingface-hub>=0.19.0
 
 crawl4ai
 json5
 firecrawl
 
-
-# 可选依赖（根据需要安装）
-# anthropic     # 如果使用Anthropic
-# google-generativeai  # 如果使用Google AI
+# Optional dependencies (install as needed)
+# anthropic     # Enable when using Anthropic
+# google-generativeai  # Enable when using Google AI
 

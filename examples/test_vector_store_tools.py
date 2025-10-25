@@ -1,7 +1,7 @@
-1"""
-测试 Vector Store 工具集成到 Agent
+"""
+Test Vector Store tool integration with the agent.
 
-这个脚本演示如何通过 Agent 使用 Vector Store 搜索功能
+This script shows how an agent can perform searches through the Canvas Vector Store.
 """
 
 import os
@@ -9,7 +9,7 @@ import sys
 import asyncio
 from pathlib import Path
 
-# 添加项目根目录到 Python 路径
+# Add the project root to the Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -17,17 +17,17 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
 console = Console()
 
 
 def print_banner():
-    """打印欢迎横幅"""
+    """Render the welcome banner."""
     banner = """
 ╔══════════════════════════════════════════════════════════════╗
-║     测试 Vector Store 工具集成                                ║
+║     Test Vector Store Tools Integration                     ║
 ║     Test Vector Store Tools Integration                     ║
 ╚══════════════════════════════════════════════════════════════╝
     """
@@ -35,18 +35,18 @@ def print_banner():
 
 
 async def test_vector_store_list():
-    """测试列出 Vector Stores"""
+    """List available Vector Stores."""
     from src.tools.canvas_tools import VectorStoreList
     
     console.print("\n" + "="*60, style="cyan")
-    console.print("📋 测试 1: 列出 Vector Stores", style="cyan bold")
+    console.print("📋 Test 1: List Vector Stores", style="cyan bold")
     console.print("="*60, style="cyan")
     
     tool = VectorStoreList()
     result = await tool.forward()
     
     if result.error:
-        console.print(f"❌ 错误: {result.error}", style="red")
+        console.print(f"❌ Error: {result.error}", style="red")
     else:
         console.print(result.output, style="green")
     
@@ -54,48 +54,48 @@ async def test_vector_store_list():
 
 
 async def test_vector_store_search(vector_store_id: str = None):
-    """测试搜索 Vector Store"""
+    """Search within a Vector Store."""
     from src.tools.canvas_tools import VectorStoreSearch
     
     console.print("\n" + "="*60, style="cyan")
-    console.print("🔍 测试 2: 搜索 Vector Store", style="cyan bold")
+    console.print("🔍 Test 2: Search a Vector Store", style="cyan bold")
     console.print("="*60, style="cyan")
     
-    # 如果没有提供 vector_store_id，先获取列表
+    # If no vector_store_id is provided, fetch the list first.
     if not vector_store_id:
-        console.print("\n⚠️  未提供 Vector Store ID，将从列表中选择", style="yellow")
+        console.print("\n⚠️  Vector Store ID not provided, retrieving list", style="yellow")
         list_result = await test_vector_store_list()
         
         if list_result.error or not list_result.output:
-            console.print("❌ 无法获取 Vector Store 列表", style="red")
+            console.print("❌ Unable to retrieve the Vector Store list", style="red")
             return
         
-        # 让用户输入 vector_store_id
-        vector_store_id = console.input("\n请输入 Vector Store ID: ")
+        # Prompt the user for the Vector Store ID.
+        vector_store_id = console.input("\nEnter a Vector Store ID: ")
     
-    # 测试查询
+    # Example queries.
     test_queries = [
-        "这门课的主要内容是什么？",
-        "第一次作业的要求",
+        "What are the main topics covered in this course?",
+        "Requirements for the first assignment",
         "Agent-Based Modeling"
     ]
     
     console.print(f"\n✓ 使用 Vector Store: {vector_store_id}", style="green")
-    console.print("\n📝 测试查询:", style="cyan bold")
+    console.print("\n📝 Sample queries:", style="cyan bold")
     for i, query in enumerate(test_queries, 1):
         console.print(f"  {i}. {query}", style="dim")
     
-    # 让用户选择查询
-    choice = console.input("\n选择查询 (1-3) 或输入自定义查询: ")
+    # Let the user choose a query.
+    choice = console.input("\nSelect a query (1-3) or enter a custom query: ")
     
     if choice.isdigit() and 1 <= int(choice) <= len(test_queries):
         query = test_queries[int(choice) - 1]
     else:
         query = choice
     
-    console.print(f"\n🔍 搜索查询: \"{query}\"", style="cyan")
+    console.print(f"\n🔍 Search query: \"{query}\"", style="cyan")
     
-    # 执行搜索
+    # Execute the search.
     tool = VectorStoreSearch()
     result = await tool.forward(
         vector_store_id=vector_store_id,
@@ -104,7 +104,7 @@ async def test_vector_store_search(vector_store_id: str = None):
     )
     
     if result.error:
-        console.print(f"\n❌ 错误: {result.error}", style="red")
+        console.print(f"\n❌ Error: {result.error}", style="red")
     else:
         console.print(f"\n{result.output}", style="green")
     
@@ -112,33 +112,35 @@ async def test_vector_store_search(vector_store_id: str = None):
 
 
 async def test_with_agent():
-    """测试通过 Agent 使用 Vector Store 工具"""
+    """Exercise the Vector Store tools through the agent."""
     console.print("\n" + "="*60, style="magenta")
-    console.print("🤖 测试 3: 通过 Agent 使用工具", style="magenta bold")
+    console.print("🤖 Test 3: Use tools through the agent", style="magenta bold")
     console.print("="*60, style="magenta")
     
     try:
         from configs.canvas_agent_config import canvas_student_agent_config
         from src.agent.general_agent.general_agent import GeneralAgent
         
-        # 初始化 Agent
-        console.print("\n🚀 正在初始化 Canvas Student Agent...", style="cyan")
+        # Initialize the agent.
+        console.print("\n🚀 Initializing Canvas Student Agent...", style="cyan")
         agent = GeneralAgent(**canvas_student_agent_config)
-        console.print("✓ Agent 初始化成功", style="green")
+        console.print("✓ Agent initialized", style="green")
         
-        # 测试查询
+        # Example prompts.
         test_queries = [
-            "列出所有可用的知识库",
-            "在知识库中搜索关于 Agent-Based Modeling 的内容",
-            "这门课有哪些主要的学习材料？"
+            "List all available knowledge bases",
+            "Search the knowledge base for Agent-Based Modeling",
+            "What are the primary learning materials for this course?"
         ]
         
-        console.print("\n📝 可用的测试查询:", style="cyan bold")
+        console.print("\n📝 Available sample prompts:", style="cyan bold")
         for i, query in enumerate(test_queries, 1):
             console.print(f"  {i}. {query}", style="dim")
         
-        # 让用户选择或输入查询
-        choice = console.input("\n选择查询 (1-3) 或输入自定义查询 (按 q 退出): ")
+        # Let the user choose or enter a prompt.
+        choice = console.input(
+            "\nSelect a prompt (1-3) or enter a custom prompt (press q to exit): "
+        )
         
         if choice.lower() == 'q':
             return
@@ -148,35 +150,35 @@ async def test_with_agent():
         else:
             query = choice
         
-        console.print(f"\n💬 用户: {query}", style="blue bold")
-        console.print("\n🤖 Agent 正在处理...\n", style="cyan")
+        console.print(f"\n💬 User: {query}", style="blue bold")
+        console.print("\n🤖 Agent processing...\n", style="cyan")
         
-        # 执行查询
+        # Execute the request.
         response = await agent.process_message(query)
         
-        # 显示结果
+        # Display the result.
         console.print(Panel(
             response,
-            title="[green bold]Agent 响应[/green bold]",
+            title="[green bold]Agent Response[/green bold]",
             border_style="green"
         ))
         
     except Exception as e:
-        console.print(f"\n❌ 错误: {e}", style="red")
+        console.print(f"\n❌ Error: {e}", style="red")
         import traceback
         console.print(traceback.format_exc(), style="red dim")
 
 
 async def main():
-    """主函数"""
+    """Entry point."""
     print_banner()
     
-    # 检查环境变量
+    # Check environment variables.
     openai_key = os.getenv("OPENAI_API_KEY")
     canvas_url = os.getenv("CANVAS_URL")
     canvas_token = os.getenv("CANVAS_ACCESS_TOKEN")
     
-    console.print("\n📋 环境检查:", style="cyan bold")
+    console.print("\n📋 Environment check:", style="cyan bold")
     console.print(f"  {'✓' if openai_key else '✗'} OPENAI_API_KEY", 
                   style="green" if openai_key else "red")
     console.print(f"  {'✓' if canvas_url else '✗'} CANVAS_URL", 
@@ -185,8 +187,8 @@ async def main():
                   style="green" if canvas_token else "red")
     
     if not all([openai_key, canvas_url, canvas_token]):
-        console.print("\n❌ 缺少必要的环境变量", style="red bold")
-        console.print("请在 .env 文件中配置以下变量:", style="yellow")
+        console.print("\n❌ Missing required environment variables", style="red bold")
+        console.print("Please update the .env file with:", style="yellow")
         if not openai_key:
             console.print("  - OPENAI_API_KEY", style="yellow")
         if not canvas_url:
@@ -197,20 +199,20 @@ async def main():
     
     console.print()
     
-    # 主菜单
+    # Main menu loop.
     while True:
         console.print("\n" + "="*60, style="cyan")
-        console.print("📋 测试菜单", style="cyan bold")
+        console.print("📋 Test menu", style="cyan bold")
         console.print("="*60, style="cyan")
-        console.print("  1. 列出所有 Vector Stores")
-        console.print("  2. 搜索 Vector Store（直接调用工具）")
-        console.print("  3. 通过 Agent 使用工具（完整流程）")
-        console.print("  q. 退出")
+        console.print("  1. List all Vector Stores")
+        console.print("  2. Search a Vector Store (call tool directly)")
+        console.print("  3. Use the agent with tools (end-to-end)")
+        console.print("  q. Quit")
         
-        choice = console.input("\n请选择 (1-3/q): ")
+        choice = console.input("\nChoose an option (1-3/q): ")
         
         if choice.lower() == 'q':
-            console.print("\n👋 再见！", style="cyan")
+            console.print("\n👋 Goodbye!", style="cyan")
             break
         elif choice == '1':
             await test_vector_store_list()
@@ -219,18 +221,18 @@ async def main():
         elif choice == '3':
             await test_with_agent()
         else:
-            console.print("⚠️  无效的选择", style="yellow")
+            console.print("⚠️  Invalid choice", style="yellow")
         
-        input("\n按回车继续...")
+        input("\nPress Enter to continue...")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        console.print("\n\n👋 再见！", style="cyan")
+        console.print("\n\n👋 Goodbye!", style="cyan")
     except Exception as e:
-        console.print(f"\n❌ 发生错误: {e}", style="red bold")
+        console.print(f"\n❌ Error: {e}", style="red bold")
         import traceback
         console.print(traceback.format_exc(), style="red dim")
 

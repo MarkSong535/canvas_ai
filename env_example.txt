@@ -1,11 +1,11 @@
-# OpenAI 配置
+# OpenAI Settings
 OPENAI_API_KEY=your-openai-api-key-here
 OPENAI_API_BASE=https://api.openai.com/v1
 # OPENAI_ORGANIZATION=your-openai-org
 # OPENAI_PROJECT=your-openai-project
 
-# 其他配置
+# Additional Settings
 LOG_LEVEL=INFO
 
-# 使用说明：将此文件复制为 .env 并填入实际的API密钥
+# Instructions: copy this file to .env and fill in your actual API credentials
 

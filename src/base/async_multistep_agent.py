@@ -87,7 +87,7 @@ from src.utils import (
 from src.logger import logger
 from src.models import Model
 
-# 定义数据类型（原本在 multistep_agent 中定义）
+# Data classes originally defined in multistep_agent
 @dataclass
 class ActionOutput:
     output: Any
@@ -966,7 +966,7 @@ You have been provided with these additional arguments, that you can access usin
             req for managed_agent in self.managed_agents.values() for req in managed_agent.to_dict()["requirements"]
         }
         requirements = tool_requirements | managed_agents_requirements
-        # 注意：在最小化框架中，我们移除了对 authorized_imports 的支持（Python executor 功能）
+    # Note: the minimal framework removes support for authorized_imports (Python executor capability)
 
         agent_dict = {
             "class": self.__class__.__name__,

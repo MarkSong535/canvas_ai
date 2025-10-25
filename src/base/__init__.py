@@ -1,6 +1,5 @@
 """
-Base 模块 - 最小化版本
-仅包含 AsyncMultiStepAgent 和相关数据类型
+Base module – minimal distribution exposing AsyncMultiStepAgent and related types.
 """
 
 from src.base.async_multistep_agent import (

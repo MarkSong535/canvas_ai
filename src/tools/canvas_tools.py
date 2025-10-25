@@ -21,6 +21,8 @@ class CanvasAPIBase(AsyncTool):
         self.access_token = os.environ.get("CANVAS_ACCESS_TOKEN")
         if "http://" in self.canvas_url:
             self.canvas_url = self.canvas_url.replace("http://", "https://")
+        if "http" not in self.canvas_url:
+            self.canvas_url = "https://" + self.canvas_url
         
         if not self.access_token:
             raise ValueError("未找到 CANVAS_ACCESS_TOKEN 环境变量")
@@ -1001,126 +1003,6 @@ class CanvasGetFileInfo(CanvasAPIBase):
             
         except Exception as e:
             return ToolResult(output=None, error=f"获取文件信息失败: {str(e)}")
-
-
-@TOOL.register_module(name="canvas_download_file", force=True)
-class CanvasDownloadFile(CanvasAPIBase):
-    """下载并读取文件内容"""
-    
-    name = "canvas_download_file"
-    description = "下载指定文件并读取其内容（支持文本文件、PDF、图片等）"
-    
-    parameters = {
-        "type": "object",
-        "properties": {
-            "file_id": {
-                "type": "string",
-                "description": "文件ID"
-            },
-            "read_content": {
-                "type": "boolean",
-                "description": "是否读取文件内容，默认True",
-                "nullable": True
-            }
-        },
-        "required": ["file_id"],
-        "additionalProperties": False
-    }
-    
-    output_type = "any"
-    
-    async def forward(self, file_id: str, read_content: bool = True) -> ToolResult:
-        """下载并读取文件"""
-        try:
-            # 获取文件信息，其中包含下载链接（带verifier的完整URL）
-            file_info = await self._make_request("GET", f"files/{file_id}")
-            
-            if isinstance(file_info, dict) and "error" in file_info:
-                return ToolResult(output=None, error=file_info["error"])
-            
-            # 获取文件下载URL（这是带verifier的真正下载链接）
-            file_url = file_info.get("url")
-            
-            if not file_url:
-                return ToolResult(
-                    output=None,
-                    error=f"无法获取文件下载链接，文件ID: {file_id}"
-                )
-            
-            file_name = file_info.get("display_name")
-            content_type = file_info.get("content-type", "")
-            file_size = file_info.get("size", 0)
-            
-            if not read_content:
-                return ToolResult(
-                    output=f"📎 文件: {file_name}\n"
-                           f"下载链接: {file_url}\n"
-                           f"大小: {file_size / (1024*1024):.2f} MB",
-                    error=None
-                )
-            
-            # 下载文件内容（使用带verifier的URL，不需要额外认证）
-            async with aiohttp.ClientSession() as session:
-                async with session.get(file_url) as response:
-                    if response.status == 200:
-                        # 根据文件类型处理
-                        if "text" in content_type or file_name.endswith(('.txt', '.md', '.py', '.java', '.cpp', '.c', '.js', '.html', '.css', '.json', '.xml')):
-                            # 文本文件
-                            content = await response.text()
-                            # 如果内容太长，只显示前5000字符
-                            if len(content) > 5000:
-                                content = content[:5000] + "\n\n... (内容过长，已截断，完整内容请使用下载链接)"
-                            
-                            output = f"📄 文件: {file_name}\n"
-                            output += f"类型: 文本文件\n"
-                            output += f"大小: {file_size / 1024:.2f} KB\n"
-                            output += f"下载链接: {file_url}\n"
-                            output += f"\n内容:\n{'-'*60}\n{content}\n{'-'*60}"
-                            
-                        elif "pdf" in content_type or file_name.endswith('.pdf'):
-                            # PDF 文件
-                            output = f"📕 PDF 文件: {file_name}\n"
-                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
-                            output += f"下载链接: {file_url}\n"
-                            output += f"提示: PDF内容需要专门的PDF阅读工具处理"
-                            
-                        elif any(ext in content_type for ext in ["image", "png", "jpg", "jpeg", "gif", "webp"]):
-                            # 图片文件
-                            output = f"🖼️ 图片文件: {file_name}\n"
-                            output += f"类型: {content_type}\n"
-                            output += f"大小: {file_size / 1024:.2f} KB\n"
-                            output += f"下载链接: {file_url}\n"
-                            output += f"提示: 请使用下载链接在浏览器中查看图片"
-                            
-                        elif any(ext in file_name.lower() for ext in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']):
-                            # Office 文件
-                            output = f"📊 Office 文件: {file_name}\n"
-                            output += f"类型: {content_type}\n"
-                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
-                            output += f"下载链接: {file_url}\n"
-                            output += f"提示: 请下载后使用对应的Office软件打开"
-                            
-                        else:
-                            # 其他文件类型
-                            output = f"📎 文件: {file_name}\n"
-                            output += f"类型: {content_type}\n"
-                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
-                            output += f"下载链接: {file_url}"
-                        
-                        return ToolResult(output=output, error=None)
-                    else:
-                        # 即使下载失败，也返回下载链接
-                        return ToolResult(
-                            output=f"⚠️ 自动读取失败 (状态码: {response.status})\n\n"
-                                   f"📎 文件: {file_name}\n"
-                                   f"下载链接: {file_url}\n"
-                                   f"提示: 请直接使用下载链接在浏览器中访问", 
-                            error=None
-                        )
-            
-        except Exception as e:
-            return ToolResult(output=None, error=f"下载文件失败: {str(e)}")
-
 
 @TOOL.register_module(name="canvas_get_folders", force=True)
 class CanvasGetFolders(CanvasAPIBase):

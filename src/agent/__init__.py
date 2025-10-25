@@ -1,6 +1,5 @@
 """
-Agent 模块 - 最小化版本
-仅包含 GeneralAgent
+Agent module – minimal distribution containing the GeneralAgent only.
 """
 
 from src.agent.general_agent import GeneralAgent

@@ -1,7 +1,7 @@
 """
-带工具的Agent使用示例
+Agent example with a custom tool.
 
-这个示例展示如何给Agent添加自定义工具
+Demonstrates how to attach a custom tool to an agent.
 """
 
 import asyncio
@@ -17,45 +17,45 @@ from src.tools.example_calculator import CalculatorTool
 
 
 async def main():
-    """主函数"""
+    """Example entry point."""
     
-    # 1. 从配置文件导入配置
+    # 1. Import the baseline configuration
     from configs.minimal_config import agent_config
     
-    # 2. 初始化模型管理器
+    # 2. Initialize the model manager
     model_manager.init_models()
     
-    # 3. 获取模型
+    # 3. Retrieve the model instance
     model = model_manager.registed_models[agent_config["model_id"]]
     
-    # 4. 创建工具实例
+    # 4. Create the tool instance
     calculator = CalculatorTool()
     
-    # 5. 准备Agent配置（添加工具）
+    # 5. Prepare the agent configuration (injecting the tool)
     agent_build_config = dict(
         type=agent_config["type"],
         config=agent_config,
         model=model,
-        tools=[calculator],  # 添加计算器工具
+        tools=[calculator],  # Add the calculator tool
         max_steps=agent_config["max_steps"],
         name=agent_config.get("name"),
         description=agent_config.get("description"),
     )
     
-    # 6. 使用Registry创建Agent
+    # 6. Build the agent via the registry
     agent = AGENT.build(agent_build_config)
     
-    logger.info("Agent创建成功（带计算器工具）！")
-    logger.info(f"可用工具: {list(agent.tools.keys())}")
+    logger.info("Agent created successfully with the calculator tool attached!")
+    logger.info(f"Available tools: {list(agent.tools.keys())}")
     
-    # 7. 运行Agent
-    task = "计算 123 + 456 的结果"
-    logger.info(f"\n开始执行任务: {task}\n")
+    # 7. Run the agent
+    task = "Calculate 123 + 456"
+    logger.info(f"\nStarting task: {task}\n")
     
     result = await agent.run(task)
     
-    logger.info(f"\n任务完成！")
-    logger.info(f"结果: {result}")
+    logger.info("\nTask complete!")
+    logger.info(f"Result: {result}")
 
 
 if __name__ == "__main__":
