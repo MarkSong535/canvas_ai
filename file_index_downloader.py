@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 import time
+from typing import List, Optional, Set
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -38,19 +39,57 @@ console = Console()
 DOWNLOAD_ROOT = Path("file_index")
 
 # Aggregated download statistics
-stats = {
-    "courses": 0,
-    "modules": 0,
-    "files_total": 0,
-    "files_downloaded": 0,
-    "files_skipped": 0,
-    "files_failed": 0,
-    "total_size": 0,
-    "vector_stores_created": 0,
-    "files_uploaded_to_vector_store": 0,
-    "files_upload_failed": 0,
-    "errors": []
-}
+
+
+def _initial_stats():
+    return {
+        "courses": 0,
+        "modules": 0,
+        "files_total": 0,
+        "files_downloaded": 0,
+        "files_skipped": 0,
+        "files_failed": 0,
+        "total_size": 0,
+        "vector_stores_created": 0,
+        "files_uploaded_to_vector_store": 0,
+        "files_upload_failed": 0,
+        "errors": []
+    }
+
+
+stats = _initial_stats()
+
+# Automation controls (used when driven programmatically)
+AUTO_MODE = False
+AUTO_SELECTED_COURSE_IDS: Optional[Set[int]] = None
+AUTO_CONFIRM = True
+
+
+def configure_automation(course_ids: Optional[List[int]] = None, auto_confirm: bool = True) -> None:
+    """Enable automation mode so the downloader can run without prompts."""
+
+    global AUTO_MODE, AUTO_SELECTED_COURSE_IDS, AUTO_CONFIRM
+
+    AUTO_MODE = True
+    AUTO_SELECTED_COURSE_IDS = set(int(cid) for cid in course_ids) if course_ids else None
+    AUTO_CONFIRM = auto_confirm
+
+
+def clear_automation() -> None:
+    """Disable automation mode and restore defaults."""
+
+    global AUTO_MODE, AUTO_SELECTED_COURSE_IDS, AUTO_CONFIRM
+
+    AUTO_MODE = False
+    AUTO_SELECTED_COURSE_IDS = None
+    AUTO_CONFIRM = True
+
+
+def reset_stats() -> None:
+    """Reset run statistics between automated invocations."""
+
+    global stats
+    stats = _initial_stats()
 
 # Vector Store configuration
 SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.json', '.csv'}
@@ -163,6 +202,13 @@ def select_courses(courses):
     """Prompt the user to select courses to download."""
     if not courses:
         return []
+
+    if AUTO_MODE:
+        if AUTO_SELECTED_COURSE_IDS is None:
+            return courses
+
+        selected = [course for course in courses if course.get('id') in AUTO_SELECTED_COURSE_IDS]
+        return selected
 
     console.print("Enter course indices using one of the formats below:", style="cyan")
     console.print("  • Type `all` or press Enter to download every course", style="dim")
@@ -552,8 +598,11 @@ async def main(skip_download=False):
             
             # Confirm before proceeding
             console.print(f"Downloading all files for {len(courses)} course(s)", style="yellow bold")
-            response = console.input("Continue? (y/n): ")
-            
+            if AUTO_MODE:
+                response = 'y' if AUTO_CONFIRM else 'n'
+            else:
+                response = console.input("Continue? (y/n): ")
+
             if response.lower() != 'y':
                 console.print("Operation cancelled", style="yellow")
                 return

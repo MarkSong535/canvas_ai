@@ -1,11 +1,17 @@
-# OpenAI Settings
-OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_API_BASE=https://api.openai.com/v1
-# OPENAI_ORGANIZATION=your-openai-org
-# OPENAI_PROJECT=your-openai-project
+LLM_PROVIDER=openai
 
-# Additional Settings
+# Open AI Config
+OPENAI_API_KEY=
+
+# Log Config
+
 LOG_LEVEL=INFO
 
-# Instructions: copy this file to .env and fill in your actual API credentials
+# Canvas Config
 
+CANVAS_URL=https://instituation.instructure.com/
+CANVAS_ACCESS_TOKEN=your_canvas_access_token_here
+
+# WebSocket Server Config
+CANVAS_WS_SECRET=your_websocket_secret_here
+CANVAS_WS_TOTP_SECRET=your_totp_secret_here
