@@ -1535,18 +1535,26 @@ class VectorStoreListFiles(AsyncTool):
                     created = datetime.fromtimestamp(file.created_at)
                     output += f"📅 创建时间: {created.strftime('%Y-%m-%d %H:%M:%S')}\n"
                 
-                # 如果需要读取内容
-                if read_content and file.status == "completed":
-                    try:
-                        # 获取文件详细信息
-                        file_info = client.files.retrieve(file.id)
-                        
-                        if hasattr(file_info, 'filename'):
-                            output += f"📄 文件名: {file_info.filename}\n"
-                        
-                        if hasattr(file_info, 'bytes'):
-                            output += f"📦 大小: {file_info.bytes / 1024:.2f} KB\n"
-                        
+                # 总是获取文件基本信息（文件名、大小等）
+                try:
+                    # 获取文件详细信息
+                    file_info = client.files.retrieve(file.id)
+                    
+                    if hasattr(file_info, 'filename'):
+                        output += f"📄 文件名: {file_info.filename}\n"
+                    
+                    if hasattr(file_info, 'bytes'):
+                        size_kb = file_info.bytes / 1024
+                        if size_kb >= 1024:
+                            output += f"📦 大小: {size_kb / 1024:.2f} MB\n"
+                        else:
+                            output += f"📦 大小: {size_kb:.2f} KB\n"
+                    
+                    if hasattr(file_info, 'purpose'):
+                        output += f"🎯 用途: {file_info.purpose}\n"
+                    
+                    # 如果需要读取内容
+                    if read_content and file.status == "completed":
                         # 尝试读取文件内容
                         try:
                             content_response = client.files.content(file.id)
@@ -1564,9 +1572,9 @@ class VectorStoreListFiles(AsyncTool):
                                 output += f"   文件大小: {len(content)} 字节\n"
                         except Exception as e:
                             output += f"\n⚠️  读取内容失败: {str(e)}\n"
-                    
-                    except Exception as e:
-                        output += f"\n⚠️  获取文件信息失败: {str(e)}\n"
+                
+                except Exception as e:
+                    output += f"\n⚠️  获取文件信息失败: {str(e)}\n"
                 
                 output += "\n"
             
