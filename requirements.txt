@@ -1,0 +1,25 @@
+# 核心依赖
+openai>=1.0.0
+pydantic>=2.0.0
+jinja2>=3.0.0
+pyyaml>=6.0.0
+
+# 配置管理
+mmengine>=0.10.0
+python-dotenv>=1.0.0
+
+# 异步和并发
+asyncio
+aiohttp>=3.9.0
+
+# 日志和可视化
+rich>=13.0.0
+
+# 工具相关
+huggingface-hub>=0.19.0
+
+# 可选依赖（根据需要安装）
+# azure-openai  # 如果使用Azure OpenAI
+# anthropic     # 如果使用Anthropic
+# google-generativeai  # 如果使用Google AI
+

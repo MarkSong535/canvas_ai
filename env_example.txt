@@ -1,0 +1,13 @@
+# Azure OpenAI 配置
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-api-key-here
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# OpenAI 配置（可选）
+OPENAI_API_KEY=your-openai-api-key-here
+
+# 其他配置
+LOG_LEVEL=INFO
+
+# 使用说明：将此文件复制为 .env 并填入实际的API密钥
+
