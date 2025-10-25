@@ -1,7 +1,7 @@
 LLM_PROVIDER=openai
 
 # Open AI Config
-OPENAI_API_KEY=
+OPENAI_API_KEY=your_openai_api_key_here
 
 # Log Config
 
