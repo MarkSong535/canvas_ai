@@ -50,3 +50,5 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# pending upload
+file_index

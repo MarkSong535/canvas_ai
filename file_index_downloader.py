@@ -156,6 +156,45 @@ async def get_courses(session, canvas_url, headers):
     return courses
 
 
+def select_courses(courses):
+    """让用户从课程列表中进行选择"""
+    if not courses:
+        return []
+
+    console.print("输入课程序号进行选择，可使用以下格式:", style="cyan")
+    console.print("  • 输入 `all` 或直接回车下载全部课程", style="dim")
+    console.print("  • 输入单个数字选择对应课程 (例如: 3)", style="dim")
+    console.print("  • 输入多个数字并用逗号分隔选择多个课程 (例如: 1,3,5)\n", style="dim")
+
+    while True:
+        choice = console.input("选择要下载的课程 (默认 all): ").strip().lower()
+
+        if choice in ("", "all"):
+            return courses
+
+        try:
+            selected_indices = set()
+            for part in choice.split(','):
+                part = part.strip()
+                if not part:
+                    continue
+                index = int(part)
+                if 1 <= index <= len(courses):
+                    selected_indices.add(index - 1)
+                else:
+                    raise ValueError
+
+            if not selected_indices:
+                raise ValueError
+
+            selected = [courses[i] for i in sorted(selected_indices)]
+            console.print(f"✓ 已选择 {len(selected)} 门课程\n", style="green")
+            return selected
+
+        except ValueError:
+            console.print("⚠️  输入无效，请输入课程编号或 `all`", style="yellow")
+
+
 async def get_course_modules(session, canvas_url, headers, course_id):
     """获取课程的所有模块"""
     modules = await fetch_all_pages(
@@ -502,6 +541,11 @@ async def main(skip_download=False):
             for i, course in enumerate(courses, 1):
                 console.print(f"  {i}. {course.get('name', 'N/A')} (ID: {course['id']})", style="dim")
             console.print()
+
+            courses = select_courses(courses)
+            if not courses:
+                console.print("⚠️  没有可下载的课程", style="yellow")
+                return
             
             # 询问是否继续
             console.print(f"将下载 {len(courses)} 个课程的所有文件", style="yellow bold")

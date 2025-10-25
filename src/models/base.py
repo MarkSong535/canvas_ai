@@ -526,7 +526,6 @@ class Model:
             "device_map",
             "organization",
             "project",
-            "azure_endpoint",
         ]:
             if hasattr(self, attribute):
                 model_dictionary[attribute] = getattr(self, attribute)
@@ -1622,66 +1621,6 @@ class OpenAIServerModel(ApiModel):
 OpenAIModel = OpenAIServerModel
 
 
-class AzureOpenAIServerModel(OpenAIServerModel):
-    """This model connects to an Azure OpenAI deployment.
-
-    Parameters:
-        model_id (`str`):
-            The model deployment name to use when connecting (e.g. "gpt-4o-mini").
-        azure_endpoint (`str`, *optional*):
-            The Azure endpoint, including the resource, e.g. `https://example-resource.azure.openai.com/`. If not provided, it will be inferred from the `AZURE_OPENAI_ENDPOINT` environment variable.
-        api_key (`str`, *optional*):
-            The API key to use for authentication. If not provided, it will be inferred from the `AZURE_OPENAI_API_KEY` environment variable.
-        api_version (`str`, *optional*):
-            The API version to use. If not provided, it will be inferred from the `OPENAI_API_VERSION` environment variable.
-        client_kwargs (`dict[str, Any]`, *optional*):
-            Additional keyword arguments to pass to the AzureOpenAI client (like organization, project, max_retries etc.).
-        custom_role_conversions (`dict[str, str]`, *optional*):
-            Custom role conversion mapping to convert message roles in others.
-            Useful for specific models that do not support specific message roles like "system".
-        **kwargs:
-            Additional keyword arguments to pass to the Azure OpenAI API.
-    """
-
-    def __init__(
-        self,
-        model_id: str,
-        azure_endpoint: str | None = None,
-        api_key: str | None = None,
-        api_version: str | None = None,
-        client_kwargs: dict[str, Any] | None = None,
-        custom_role_conversions: dict[str, str] | None = None,
-        **kwargs,
-    ):
-        client_kwargs = client_kwargs or {}
-        client_kwargs.update(
-            {
-                "api_version": api_version,
-                "azure_endpoint": azure_endpoint,
-            }
-        )
-        super().__init__(
-            model_id=model_id,
-            api_key=api_key,
-            client_kwargs=client_kwargs,
-            custom_role_conversions=custom_role_conversions,
-            **kwargs,
-        )
-
-    def create_client(self):
-        try:
-            import openai
-        except ModuleNotFoundError as e:
-            raise ModuleNotFoundError(
-                "Please install 'openai' extra to use AzureOpenAIServerModel: `pip install 'smolagents[openai]'`"
-            ) from e
-
-        return openai.AzureOpenAI(**self.client_kwargs)
-
-
-AzureOpenAIModel = AzureOpenAIServerModel
-
-
 class AmazonBedrockServerModel(ApiModel):
     """
     A model class for interacting with Amazon Bedrock Server models through the Bedrock API.
@@ -1876,8 +1815,6 @@ __all__ = [
     "OpenAIServerModel",
     "OpenAIModel",
     "VLLMModel",
-    "AzureOpenAIServerModel",
-    "AzureOpenAIModel",
     "AmazonBedrockServerModel",
     "AmazonBedrockModel",
     "ChatMessage",

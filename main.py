@@ -31,16 +31,6 @@ async def main():
     # 2. 初始化模型管理器
     model_manager.init_models()
     
-    # 或者手动注册Azure OpenAI模型（如果不使用 model_manager.init_models()）
-    # from src.models.openaillm import AzureOpenAIServerModel
-    # azure_model = AzureOpenAIServerModel(
-    #     model_id="gpt-4o",
-    #     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    #     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    #     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
-    # )
-    # model_manager.registed_models["azure-gpt-4o"] = azure_model
-    
     # 3. 获取模型
     model = model_manager.registed_models[agent_config["model_id"]]
     

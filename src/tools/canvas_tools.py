@@ -19,6 +19,8 @@ class CanvasAPIBase(AsyncTool):
         super().__init__()
         self.canvas_url = os.environ.get("CANVAS_URL", "https://canvas.instructure.com")
         self.access_token = os.environ.get("CANVAS_ACCESS_TOKEN")
+        if "http://" in self.canvas_url:
+            self.canvas_url = self.canvas_url.replace("http://", "https://")
         
         if not self.access_token:
             raise ValueError("未找到 CANVAS_ACCESS_TOKEN 环境变量")

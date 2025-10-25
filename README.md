@@ -1,11 +1,11 @@
 # Canvas Student Agent
 
-一个基于 Azure OpenAI 的 Canvas LMS 智能助手，专为学生设计。
+一个基于 OpenAI 的 Canvas LMS 智能助手，专为学生设计。
 
 ## 功能特性
 
 - 🎓 **学生权限**：专门针对学生级别的 Canvas API 访问权限
-- 🤖 **智能对话**：基于 GPT-5 的自然语言交互
+- 🤖 **智能对话**：基于 OpenAI GPT-4o 的自然语言交互
 - 🛠️ **22+ API工具**：涵盖课程、作业、文件、讨论等核心功能
 - 💬 **交互式控制台**：美观的命令行界面，支持实时对话
 - 🔐 **安全配置**：使用环境变量管理敏感信息
@@ -52,13 +52,14 @@
 
 ### 1. 环境配置
 
-在项目根目录创建 `.env` 文件：
+在项目根目录创建 `.env` 文件，并配置 OpenAI 模型：
 
 ```env
-# Azure OpenAI 配置
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_API_VERSION=2024-08-01-preview
+# OpenAI 官方 API
+OPENAI_API_KEY=your-openai-api-key
+# OPENAI_API_BASE=https://api.openai.com/v1           # 如需自定义基地址
+# OPENAI_ORGANIZATION=org-id                           # 可选
+# OPENAI_PROJECT=project-id                            # 可选
 
 # Canvas LMS 配置
 CANVAS_URL=https://your-school.instructure.com
@@ -155,7 +156,7 @@ python examples/direct_file_download_test.py <file_id>
 ## 技术架构
 
 - **框架**: 自定义 Agent Framework
-- **AI 模型**: Azure OpenAI GPT-5
+- **AI 模型**: OpenAI GPT-4o / 其他兼容模型
 - **异步处理**: aiohttp + asyncio
 - **用户界面**: Rich (终端美化)
 - **配置管理**: python-dotenv

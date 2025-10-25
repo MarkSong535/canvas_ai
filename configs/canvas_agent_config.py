@@ -39,7 +39,7 @@ canvas_student_agent_config = dict(
     type="general_agent",
     name="canvas_student_agent",
     description="Canvas LMS 学生助手，帮助学生管理课程、作业、讨论等",
-    model_id="gpt-5",  # 使用 gpt-5 模型
+    model_id="gpt-4o",  # 默认使用 OpenAI GPT-4o，可替换为其他已注册模型别名
     max_steps=15,
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt模板路径
     

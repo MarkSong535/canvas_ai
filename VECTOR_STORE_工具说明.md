@@ -238,9 +238,6 @@ OPENAI_API_KEY=sk-your-key-here
 CANVAS_URL=https://your-canvas-domain.instructure.com
 CANVAS_ACCESS_TOKEN=your-canvas-token
 
-# Azure OpenAI（用于 Agent LLM）
-AZURE_OPENAI_ENDPOINT=your-endpoint
-AZURE_OPENAI_API_KEY=your-azure-key
 ```
 
 ---

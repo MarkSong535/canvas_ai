@@ -24,7 +24,6 @@ firecrawl
 
 
 # 可选依赖（根据需要安装）
-# azure-openai  # 如果使用Azure OpenAI
 # anthropic     # 如果使用Anthropic
 # google-generativeai  # 如果使用Google AI
 

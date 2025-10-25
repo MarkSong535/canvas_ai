@@ -271,7 +271,14 @@ async def print_status():
     # 检查环境变量
     canvas_url = os.environ.get("CANVAS_URL", "未设置")
     canvas_token = "已设置 ✓" if os.environ.get("CANVAS_ACCESS_TOKEN") else "未设置 ✗"
-    azure_endpoint = "已设置 ✓" if os.environ.get("AZURE_OPENAI_ENDPOINT") else "未设置 ✗"
+
+    openai_key = "已设置 ✓" if os.environ.get("OPENAI_API_KEY") else "未设置 ✗"
+
+    available_models = model_manager.list_models()
+    if available_models:
+        models_text = ", ".join(available_models)
+    else:
+        models_text = "未初始化"
     
     # 检查 Canvas 连接
     connected, message = await check_canvas_connection()
@@ -282,7 +289,8 @@ async def print_status():
     
     [yellow]Canvas URL:[/yellow] {canvas_url}
     [yellow]Canvas Token:[/yellow] {canvas_token}
-    [yellow]Azure OpenAI:[/yellow] {azure_endpoint}
+    [yellow]OpenAI API Key:[/yellow] {openai_key}
+    [yellow]可用模型:[/yellow] {models_text}
     [yellow]Canvas 连接:[/yellow] {canvas_status}
     """
     
@@ -318,9 +326,27 @@ async def initialize_agent():
         
         # 初始化模型管理器
         model_manager.init_models()
-        
+
+        available_models = model_manager.list_models()
+        console.print(
+            f"[green]已注册 {len(available_models)} 个大模型: {', '.join(available_models) or '无'}[/green]"
+        )
+
         # 获取模型
-        model = model_manager.registed_models[agent_config["model_id"]]
+        try:
+            model = model_manager.registed_models[agent_config["model_id"]]
+        except KeyError:
+            available = model_manager.list_models()
+            console.print(
+                f"[bold red]错误: 模型 {agent_config['model_id']} 未注册[/bold red]"
+            )
+            console.print(
+                f"[yellow]当前可用模型: {', '.join(available) if available else '无'}[/yellow]"
+            )
+            console.print(
+                "[cyan]请在 configs/canvas_agent_config.py 中更新 model_id 或检查环境变量配置[/cyan]"
+            )
+            return None
         
         # 准备 Agent 配置
         agent_build_config = dict(
