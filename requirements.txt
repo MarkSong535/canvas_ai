@@ -18,6 +18,11 @@ rich>=13.0.0
 # 工具相关
 huggingface-hub>=0.19.0
 
+crawl4ai
+json5
+firecrawl
+
+
 # 可选依赖（根据需要安装）
 # azure-openai  # 如果使用Azure OpenAI
 # anthropic     # 如果使用Anthropic
