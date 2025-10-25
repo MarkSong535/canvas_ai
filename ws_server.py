@@ -24,6 +24,12 @@ _AGENT_CACHE = None
 AUTH_PASSWORD = os.getenv("CANVAS_WS_SECRET", "canvas-agent-password")
 TOTP_SECRET_ENV = "CANVAS_WS_TOTP_SECRET"
 TOTP_SECRET = os.getenv(TOTP_SECRET_ENV)
+TOTP_DISABLED = os.getenv("CANVAS_WS_TOTP_DISABLED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 async def build_agent() -> Any:
@@ -217,6 +223,9 @@ def authenticate_payload(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 
     if password != AUTH_PASSWORD:
         return False, "Invalid password."
+
+    if TOTP_DISABLED:
+        return True, None
 
     if not isinstance(totp_code, str) or not totp_code.strip():
         return False, "Missing TOTP code."

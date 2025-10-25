@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Canvas Agent WebSocket Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            color-scheme: light dark;
+            --background: #f5f6fa;
+            --panel: #ffffff;
+            --border: #dcdde1;
+            --primary: #273c75;
+            --accent: #44bd32;
+            --danger: #e84118;
+            --text: #2f3640;
+            --muted: #636e72;
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #1e1f29;
+                --panel: #2f2f3a;
+                --border: #3a3b47;
+                --primary: #74b9ff;
+                --accent: #55efc4;
+                --danger: #ff7675;
+                --text: #ecf0f1;
+                --muted: #b2bec3;
+            }
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--background);
+            color: var(--text);
+        }
+        header {
+            padding: 24px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        header h1 {
+            margin: 0 0 8px 0;
+            font-size: 1.8rem;
+            color: var(--primary);
+        }
+        header p {
+            margin: 0;
+            color: var(--muted);
+        }
+        main {
+            max-width: 1100px;
+            margin: 24px auto 40px auto;
+            padding: 0 16px;
+            display: grid;
+            gap: 24px;
+        }
+        section {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        section h2 {
+            margin-top: 0;
+            font-size: 1.3rem;
+            color: var(--primary);
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        input, textarea, select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: none;
+            color: inherit;
+            font-size: 0.95rem;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .inline {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        button {
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            background: var(--primary);
+            color: #fff;
+        }
+        button.secondary {
+            background: var(--accent);
+            color: black;
+        }
+        button.secondary:disabled {
+            background: #95a5a6;
+            color: #ffffff;
+        }
+        button.danger {
+            background: var(--danger);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button:not(:disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 1000;
+        }
+        .modal {
+            background: var(--panel);
+            color: var(--text);
+            border-radius: 12px;
+            max-width: 520px;
+            width: 100%;
+            box-shadow: 0 16px 36px rgba(0,0,0,0.25);
+            border: 1px solid var(--border);
+            padding: 24px;
+        }
+        .modal header {
+            padding: 0 0 12px 0;
+            margin: 0 0 16px 0;
+            border-bottom: 1px solid var(--border);
+            background: none;
+            box-shadow: none;
+        }
+        .modal header h3 {
+            margin: 0;
+            color: var(--primary);
+            font-size: 1.2rem;
+        }
+        .course-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 0 0 16px 0;
+            padding: 0;
+            list-style: none;
+        }
+        .course-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            background: var(--background);
+        }
+        .course-list li input[type="checkbox"] {
+            width: 20px;
+        }
+        .course-list li:last-child {
+            margin-bottom: 0;
+        }
+        .course-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .course-details small {
+            color: var(--muted);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .log-toggle {
+            width: 100%;
+        }
+        .log-toggle summary {
+            cursor: pointer;
+            font-weight: 600;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1rem;
+            color: var(--primary);
+            outline: none;
+        }
+        .log-toggle summary::-webkit-details-marker {
+            display: none;
+        }
+        .log-toggle summary::before {
+            content: '>';
+            display: inline-block;
+            transform: rotate(0deg);
+            transition: transform 0.2s ease;
+        }
+        .log-toggle[open] summary::before {
+            transform: rotate(90deg);
+        }
+        .log-body {
+            margin-top: 16px;
+        }
+        .chat-history {
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: var(--background);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            min-height: 60px;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .chat-entry {
+            margin-bottom: 12px;
+        }
+        .chat-entry:last-child {
+            margin-bottom: 0;
+        }
+        #log {
+            background: var(--background);
+            border-radius: 8px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            max-height: 320px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .log-entry {
+            margin-bottom: 12px;
+            border-left: 4px solid var(--border);
+            padding-left: 12px;
+        }
+        .log-entry.system { border-color: var(--accent); }
+        .log-entry.error { border-color: var(--danger); color: var(--danger); }
+        .log-entry.outbound { border-color: var(--primary); }
+        .log-entry.inbound { border-color: #00cec9; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            background: var(--border);
+            color: var(--muted);
+        }
+        .flex {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .spacer { flex: 1; }
+        @media (max-width: 720px) {
+            header, main, section { border-radius: 0; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Canvas Agent WebSocket Client</h1>
+    </header>
+
+    <main>
+        <section id="connection-panel">
+            <h2>Connection</h2>
+            <p style="margin-bottom: 16px;">Enter your Canvas WebSocket password and current TOTP code.</p>
+            <div class="inline">
+                <div>
+                    <label for="secret">Password</label>
+                    <input id="secret" type="password" placeholder="CANVAS_WS_SECRET" autocomplete="off">
+                </div>
+                <div>
+                    <label for="totp">TOTP Code</label>
+                    <input id="totp" type="text" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code">
+                </div>
+            </div>
+            <div class="flex" style="margin-top: 16px;">
+                <button id="connect-btn">Connect & Authenticate</button>
+                <span id="status" class="badge">Disconnected</span>
+                <span class="spacer"></span>
+            </div>
+        </section>
+
+        <section id="chat-panel" style="display:none;">
+            <h2>Chat</h2>
+            <label for="chat-query">Query</label>
+            <textarea id="chat-query" placeholder="e.g. List my Canvas courses"></textarea>
+            <div class="flex" style="margin-top: 12px;">
+                <button id="send-chat" class="secondary" disabled>Send Chat</button>
+                <button id="select-courses" class="secondary" disabled>Select Courses for Download</button>
+            </div>
+            <div id="chat-history" class="chat-history" style="display:none;"></div>
+        </section>
+
+        <!-- <section id="download-panel" style="display:none;">
+            <h2>Download Workflow</h2>
+            <div class="flex" style="margin-bottom: 12px;">
+                <button id="request-courses" disabled>Request Course List</button>
+                <button id="start-download" class="secondary" disabled>Start Download</button>
+                <button id="select-courses" class="secondary" disabled>Select Courses…</button>
+            </div>
+            <label for="course-ids">Course IDs (comma-separated)</label>
+            <input id="course-ids" type="text" placeholder="e.g. 43210,48765">
+            <label for="course-indices" style="margin-top:12px;">Course indices from the last list (comma-separated)</label>
+            <input id="course-indices" type="text" placeholder="e.g. 1,3">
+        </section> -->
+
+        <section id="log-panel" style="display:none;">
+            <details id="log-toggle" class="log-toggle">
+                <summary>Log</summary>
+                <div class="log-body">
+                    <div id="log"></div>
+                </div>
+            </details>
+        </section>
+    </main>
+
+    <div id="course-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="course-modal-title">
+        <div class="modal">
+            <header>
+                <h3 id="course-modal-title">Select Courses to Download</h3>
+            </header>
+            <ul id="course-list" class="course-list"></ul>
+            <div class="modal-actions">
+                <button id="course-cancel" class="danger">Cancel</button>
+                <button id="course-confirm" class="secondary" disabled>Download Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const connectionPanel = document.getElementById('connection-panel');
+    const chatPanel = document.getElementById('chat-panel');
+    const downloadPanel = document.getElementById('download-panel');
+    const logSection = document.getElementById('log-panel');
+    const secretInput = document.getElementById('secret');
+    const totpInput = document.getElementById('totp');
+    const connectBtn = document.getElementById('connect-btn');
+    const statusBadge = document.getElementById('status');
+    const sendChatBtn = document.getElementById('send-chat');
+    const requestCoursesBtn = document.getElementById('request-courses');
+    const startDownloadBtn = document.getElementById('start-download');
+    const selectCoursesBtn = document.getElementById('select-courses');
+    const chatQueryInput = document.getElementById('chat-query');
+    const courseIdsInput = document.getElementById('course-ids');
+    const courseIndicesInput = document.getElementById('course-indices');
+    const logPanel = document.getElementById('log');
+    const chatHistory = document.getElementById('chat-history');
+    const courseModal = document.getElementById('course-modal');
+    const courseListEl = document.getElementById('course-list');
+    const courseModalCancelBtn = document.getElementById('course-cancel');
+    const courseModalConfirmBtn = document.getElementById('course-confirm');
+
+    const WS_ENDPOINT = 'ws://45.62.106.109:8765';
+    let socket = null;
+        let authenticated = false;
+        let lastCourseList = [];
+        let chatPending = false;
+
+        function updateSendChatState() {
+            const socketReady = socket && socket.readyState === WebSocket.OPEN;
+            const baseDisabled = !socketReady || !authenticated;
+            const shouldDisable = baseDisabled || chatPending;
+            sendChatBtn.disabled = shouldDisable;
+            if (selectCoursesBtn) {
+                selectCoursesBtn.disabled = shouldDisable;
+            }
+        }
+
+        function log(message, type = 'system') {
+            const timestamp = new Date().toLocaleTimeString();
+            if (!logPanel) {
+                // Fallback to console if the UI log container is unavailable
+                const prefix = type === 'error' ? '[ERROR]' : '[LOG]';
+                console.log(`${prefix} [${timestamp}] ${message}`);
+                return;
+            }
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logPanel.appendChild(entry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function setConnectedState(isConnected) {
+            connectBtn.disabled = isConnected;
+            if (requestCoursesBtn) {
+                requestCoursesBtn.disabled = !isConnected || !authenticated;
+            }
+            if (startDownloadBtn) {
+                startDownloadBtn.disabled = !isConnected || !authenticated;
+            }
+            if (selectCoursesBtn) {
+                selectCoursesBtn.disabled = !isConnected || !authenticated;
+            }
+            statusBadge.textContent = isConnected ? (authenticated ? 'Authenticated' : 'Connected') : 'Disconnected';
+            statusBadge.style.background = isConnected ? (authenticated ? '#55efc4' : '#74b9ff') : 'var(--border)';
+            statusBadge.style.color = isConnected ? '#000' : 'var(--muted)';
+            updateSendChatState();
+        }
+
+        function setAuthenticatedState(isAuthenticated) {
+            authenticated = isAuthenticated;
+            if (requestCoursesBtn) {
+                requestCoursesBtn.disabled = !isAuthenticated;
+            }
+            if (startDownloadBtn) {
+                startDownloadBtn.disabled = !isAuthenticated;
+            }
+            if (selectCoursesBtn) {
+                selectCoursesBtn.disabled = !isAuthenticated;
+            }
+        statusBadge.textContent = isAuthenticated ? 'Authenticated' : (socket ? 'Connected' : 'Disconnected');
+            statusBadge.style.background = isAuthenticated ? '#55efc4' : (socket ? '#74b9ff' : 'var(--border)');
+            statusBadge.style.color = isAuthenticated ? '#000' : 'var(--muted)';
+            if (!isAuthenticated) {
+                chatPending = false;
+                if (courseModalConfirmBtn) {
+                    courseModalConfirmBtn.disabled = true;
+                }
+            }
+            updateSendChatState();
+        }
+
+    function showContentPanels(show) {
+    const display = show ? '' : 'none';
+    if (chatPanel) chatPanel.style.display = display;
+    if (downloadPanel) downloadPanel.style.display = display;
+    if (logSection) logSection.style.display = display;
+        if (chatHistory) {
+            chatHistory.style.display = show ? '' : 'none';
+            if (!show) {
+                chatHistory.innerHTML = '';
+            }
+        }
+        if (!show) {
+            chatPending = false;
+            updateSendChatState();
+            hideCourseModal();
+        }
+    }
+
+    function appendChatEntry(role, text) {
+        if (!chatHistory) return;
+        chatHistory.style.display = '';
+        const entry = document.createElement('div');
+        entry.className = 'chat-entry';
+        const name = role === 'agent' ? 'Agent' : 'You';
+        const formatted = text.replace(/\n/g, '<br>');
+        entry.innerHTML = `<strong>${name}:</strong> ${formatted}`;
+        if (chatHistory.firstChild) {
+            chatHistory.insertBefore(entry, chatHistory.firstChild);
+        } else {
+            chatHistory.appendChild(entry);
+        }
+        chatHistory.scrollTop = 0;
+    }
+
+        function safeParseJSON(text) {
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function handleInbound(message) {
+            log(`← ${message}`, 'inbound');
+            const payload = safeParseJSON(message);
+            if (!payload) return;
+
+            if (payload.status === 'authenticated') {
+                setAuthenticatedState(true);
+                if (connectionPanel) {
+                    connectionPanel.style.display = 'none';
+                }
+                showContentPanels(true);
+                log('Authentication successful. Ready for commands.', 'system');
+                requestCourseList();
+                return;
+            }
+
+            if (payload.status === 'course_list') {
+                lastCourseList = payload.courses || [];
+                if (lastCourseList.length === 0) {
+                    log('Course list is empty.', 'system');
+                } else {
+                    const summary = lastCourseList
+                        .map(course => `${course.index}. ${course.name || 'Untitled'} (ID: ${course.id})`)
+                        .join('\n');
+                    log(`Course roster:\n${summary}`, 'system');
+                }
+                if (courseModalConfirmBtn) {
+                    courseModalConfirmBtn.disabled = true;
+                }
+                return;
+            }
+
+            if (typeof payload.answer === 'string') {
+                appendChatEntry('agent', payload.answer);
+                chatPending = false;
+                updateSendChatState();
+                chatQueryInput.focus();
+            }
+
+            if (payload.error) {
+                log(`Error: ${payload.error}`, 'error');
+                chatPending = false;
+                updateSendChatState();
+            }
+        }
+
+        function handleSocketClose(event) {
+            log(`Connection closed (code ${event.code})`, 'system');
+            socket = null;
+            lastCourseList = [];
+            setAuthenticatedState(false);
+            setConnectedState(false);
+            chatPending = false;
+            updateSendChatState();
+            hideCourseModal();
+            showContentPanels(false);
+            if (connectionPanel) {
+                connectionPanel.style.display = '';
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            const url = WS_ENDPOINT;
+            const password = secretInput.value.trim();
+            const totp = totpInput.value.trim();
+
+            if (!url || !password || !totp) {
+                log('Provide WebSocket URL, password, and TOTP before connecting.', 'error');
+                return;
+            }
+
+            try {
+                socket = new WebSocket(url);
+            } catch (error) {
+                log(`Failed to create WebSocket: ${error}`, 'error');
+                return;
+            }
+
+            socket.addEventListener('open', () => {
+                log('Socket connection established.', 'system');
+                setConnectedState(true);
+                setAuthenticatedState(false);
+                sendAuth(password, totp);
+            });
+
+            socket.addEventListener('message', event => {
+                handleInbound(event.data);
+            });
+
+            socket.addEventListener('close', handleSocketClose);
+            socket.addEventListener('error', event => {
+                log(`WebSocket error: ${event.message || 'Unknown error'}`, 'error');
+            });
+        });
+
+        function sendAuth(password, totp) {
+            const payload = JSON.stringify({
+                type: 'auth',
+                password,
+                totp
+            });
+            log(`→ ${payload}`, 'outbound');
+            socket.send(payload);
+        }
+
+        window.addEventListener('load', () => {
+            const password = secretInput.value.trim();
+            const totp = totpInput.value.trim();
+            if (password && totp) {
+                connectBtn.click();
+            } else {
+                secretInput.focus();
+            }
+            showContentPanels(false);
+        });
+
+        sendChatBtn.addEventListener('click', () => {
+            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+                log('Not connected or authenticated.', 'error');
+                return;
+            }
+
+            const query = chatQueryInput.value.trim();
+            if (!query) {
+                log('Enter a query before sending.', 'error');
+                return;
+            }
+
+            const payload = JSON.stringify({ type: 'chat', query });
+            log(`→ ${payload}`, 'outbound');
+            socket.send(payload);
+            appendChatEntry('user', query);
+            chatQueryInput.value = '';
+            chatPending = true;
+            updateSendChatState();
+        });
+
+        function requestCourseList() {
+            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+                log('Not connected or authenticated.', 'error');
+                return false;
+            }
+            const payload = JSON.stringify({ type: 'download' });
+            log(`→ ${payload}`, 'outbound');
+            socket.send(payload);
+            return true;
+        }
+
+        if (requestCoursesBtn) {
+            requestCoursesBtn.addEventListener('click', () => {
+                requestCourseList();
+            });
+        }
+
+        function openCourseModal() {
+            if (!courseModal || !courseListEl || !courseModalConfirmBtn) {
+                log('Course selection UI is unavailable.', 'error');
+                return;
+            }
+            if (!lastCourseList || lastCourseList.length === 0) {
+                log('Fetch the course list before selecting courses.', 'error');
+                return;
+            }
+
+            courseListEl.innerHTML = '';
+            lastCourseList.forEach(course => {
+                const li = document.createElement('li');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `course-${course.index}`;
+                checkbox.value = course.id;
+                checkbox.dataset.index = course.index;
+
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.className = 'course-details';
+                const title = document.createElement('span');
+                title.textContent = course.name || 'Untitled course';
+                const meta = document.createElement('small');
+                meta.textContent = `Index: ${course.index} • Canvas ID: ${course.id}`;
+                label.appendChild(title);
+                label.appendChild(meta);
+
+                li.appendChild(checkbox);
+                li.appendChild(label);
+                courseListEl.appendChild(li);
+            });
+
+            courseModalConfirmBtn.disabled = true;
+            courseModal.style.display = 'flex';
+
+            courseListEl.querySelectorAll('input[type="checkbox"]').forEach(box => {
+                box.addEventListener('change', () => {
+                    const anyChecked = courseListEl.querySelector('input[type="checkbox"]:checked');
+                    courseModalConfirmBtn.disabled = !anyChecked;
+                });
+            });
+        }
+
+        function hideCourseModal() {
+            if (courseModal) {
+                courseModal.style.display = 'none';
+            }
+            if (courseModalConfirmBtn) {
+                courseModalConfirmBtn.disabled = true;
+            }
+        }
+
+        function dispatchDownload({ course_ids, course_indices }) {
+            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+                log('Not connected or authenticated.', 'error');
+                return;
+            }
+
+            const payload = {
+                type: 'download',
+                auto_confirm: true
+            };
+
+            if (course_ids && course_ids.length) {
+                payload.course_ids = course_ids;
+            }
+
+            if (course_indices && course_indices.length) {
+                payload.course_indices = course_indices;
+            }
+
+            if (!payload.course_ids && !payload.course_indices) {
+                log('No valid courses selected for download.', 'error');
+                return;
+            }
+
+            const serialized = JSON.stringify(payload);
+            log(`→ ${serialized}`, 'outbound');
+            socket.send(serialized);
+        }
+
+        if (selectCoursesBtn) {
+            selectCoursesBtn.addEventListener('click', () => {
+                openCourseModal();
+            });
+        }
+
+        if (courseModalCancelBtn) {
+            courseModalCancelBtn.addEventListener('click', () => {
+                hideCourseModal();
+            });
+        }
+
+        if (courseModal) {
+            courseModal.addEventListener('click', event => {
+                if (event.target === courseModal) {
+                    hideCourseModal();
+                }
+            });
+        }
+
+        if (courseModalConfirmBtn) {
+            courseModalConfirmBtn.addEventListener('click', () => {
+                if (!courseListEl) {
+                    log('Course selection UI is unavailable.', 'error');
+                    return;
+                }
+                const selectedBoxes = courseListEl.querySelectorAll('input[type="checkbox"]:checked');
+                if (!selectedBoxes.length) {
+                    log('Select at least one course to download.', 'error');
+                    return;
+                }
+
+                const courseIds = [];
+                const courseIndices = [];
+                selectedBoxes.forEach(box => {
+                    const id = parseInt(box.value, 10);
+                    const index = parseInt(box.dataset.index, 10);
+                    if (!Number.isNaN(id)) {
+                        courseIds.push(id);
+                    }
+                    if (!Number.isNaN(index)) {
+                        courseIndices.push(index);
+                    }
+                });
+
+                if (!courseIds.length && !courseIndices.length) {
+                    log('Could not parse selected courses.', 'error');
+                    return;
+                }
+
+                dispatchDownload({ course_ids: courseIds, course_indices: courseIndices });
+                hideCourseModal();
+            });
+        }
+
+        if (startDownloadBtn) {
+            startDownloadBtn.addEventListener('click', () => {
+                if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+                    log('Not connected or authenticated.', 'error');
+                    return;
+                }
+
+                const idsText = courseIdsInput ? courseIdsInput.value.trim() : '';
+                const indicesText = courseIndicesInput ? courseIndicesInput.value.trim() : '';
+                const courseIds = idsText
+                    ? idsText.split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v))
+                    : [];
+                const courseIndices = indicesText
+                    ? indicesText.split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v))
+                    : [];
+
+                if (!courseIds.length && !courseIndices.length) {
+                    log('Provide course IDs or indices before starting the download.', 'error');
+                    return;
+                }
+
+                dispatchDownload({ course_ids: courseIds, course_indices: courseIndices });
+            });
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close(1000, 'Page closing');
+            }
+        });
+    </script>
+</body>
+</html>
