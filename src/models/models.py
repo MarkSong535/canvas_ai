@@ -84,7 +84,7 @@ class ModelManager(metaclass=Singleton):
             api_base = None
 
         openai_models = [
-            {"model_id": "gpt-5", "aliases": ["openai-gpt-5"]},
+            {"model_id": "gpt-5", "aliases": ["openai-gpt-5", "gpt-5"]},
             {"model_id": "gpt-5-mini", "aliases": ["openai-gpt-5-mini"]},
             {"model_id": "gpt-5-nano", "aliases": ["openai-gpt-5-nano"]},
             {"model_id": "gpt-4o-mini", "aliases": ["openai-gpt-4o-mini", "gpt-4o-mini"]},

@@ -12,7 +12,6 @@ from src.tools.canvas_tools import (
     CanvasGetModuleItems,
     CanvasGetFiles,
     CanvasGetFileInfo,
-    CanvasDownloadFile,
     CanvasGetFolders,
     CanvasGetFolderFiles,
     CanvasSearchFiles,
@@ -51,7 +50,6 @@ canvas_student_agent_config = dict(
         CanvasGetModuleItems(),           # Retrieve module items
         CanvasGetFiles(),                 # List course files
         CanvasGetFileInfo(),              # Retrieve file details
-        CanvasDownloadFile(),             # Download a file
         CanvasGetFolders(),               # List folders
         CanvasGetFolderFiles(),           # List files inside a folder
         CanvasSearchFiles(),              # Search files by keyword

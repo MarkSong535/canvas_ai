@@ -302,7 +302,7 @@ async def initialize_agent():
     try:
         console.print("\n[bold cyan]🚀 Initializing the Canvas Student Agent...[/bold cyan]")
         
-    # Verify essential environment variables
+        # Verify essential environment variables
         if not os.environ.get("CANVAS_ACCESS_TOKEN"):
             console.print("[bold red]Error: CANVAS_ACCESS_TOKEN is not configured[/bold red]")
             console.print("[yellow]Set CANVAS_ACCESS_TOKEN and CANVAS_URL in your .env file.[/yellow]")
@@ -316,15 +316,15 @@ async def initialize_agent():
             console.print("7. Copy the token and add it to your .env file\n")
             return None
         
-    # Initialize the logger in quiet mode
+        # Initialize the logger in quiet mode
         log_dir = Path("workdir/canvas_chat")
         log_dir.mkdir(parents=True, exist_ok=True)
         logger.init_logger(str(log_dir / "log.txt"))
         
-    # Import the agent configuration
+        # Import the agent configuration
         from configs.canvas_agent_config import agent_config
         
-    # Initialize the model manager
+        # Initialize the model manager
         model_manager.init_models()
 
         available_models = model_manager.list_models()
@@ -332,7 +332,7 @@ async def initialize_agent():
             f"[green]Registered {len(available_models)} models: {', '.join(available_models) or 'None'}[/green]"
         )
 
-    # Retrieve the configured model
+        # Retrieve the configured model
         try:
             model = model_manager.registed_models[agent_config["model_id"]]
         except KeyError:
@@ -348,7 +348,7 @@ async def initialize_agent():
             )
             return None
         
-    # Prepare the agent configuration
+        # Prepare the agent configuration
         agent_build_config = dict(
             type=agent_config["type"],
             config=agent_config,
@@ -359,7 +359,7 @@ async def initialize_agent():
             description=agent_config.get("description"),
         )
         
-    # Build the agent via the registry
+        # Build the agent via the registry
         agent = AGENT.build(agent_build_config)
         
         console.print(f"[bold green]✓ Agent initialized successfully![/bold green]")

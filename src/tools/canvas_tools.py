@@ -56,12 +56,12 @@ class CanvasAPIBase(AsyncTool):
                     if response.status == 200:
                         return await response.json()
                     elif response.status == 404:
-                        return {"error": "资源未找到"}
+                        return {"error": "Resource not found"}
                     else:
                         error_text = await response.text()
-                        return {"error": f"API请求失败 (状态码: {response.status}): {error_text}"}
+                        return {"error": f"API Request Failed (Status Code {response.status}): {error_text}"}
         except Exception as e:
-            return {"error": f"请求异常: {str(e)}"}
+            return {"error": f"Request Error: {str(e)}"}
 
 
 @TOOL.register_module(name="canvas_list_courses", force=True)
