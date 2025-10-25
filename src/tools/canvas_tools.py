@@ -1030,78 +1030,90 @@ class CanvasDownloadFile(CanvasAPIBase):
     async def forward(self, file_id: str, read_content: bool = True) -> ToolResult:
         """下载并读取文件"""
         try:
-            # 先获取文件的 public_url（学生权限需要通过这个API）
-            public_url_result = await self._make_request("GET", f"files/{file_id}/public_url")
-            
-            if isinstance(public_url_result, dict) and "error" in public_url_result:
-                # 如果获取public_url失败，尝试获取文件基本信息
-                file_info = await self._make_request("GET", f"files/{file_id}")
-                if isinstance(file_info, dict) and "error" in file_info:
-                    return ToolResult(output=None, error=file_info["error"])
-                
-                # 返回文件信息但无法下载
-                return ToolResult(
-                    output=f"📁 文件: {file_info.get('display_name')}\n"
-                           f"权限限制: 无法下载此文件（可能需要在Canvas网页上直接访问）\n"
-                           f"文件ID: {file_id}",
-                    error=None
-                )
-            
-            # 获取public_url和文件信息
-            file_url = public_url_result.get("public_url")
-            
-            # 再获取文件详细信息
+            # 获取文件信息，其中包含下载链接（带verifier的完整URL）
             file_info = await self._make_request("GET", f"files/{file_id}")
+            
             if isinstance(file_info, dict) and "error" in file_info:
                 return ToolResult(output=None, error=file_info["error"])
             
+            # 获取文件下载URL（这是带verifier的真正下载链接）
+            file_url = file_info.get("url")
+            
+            if not file_url:
+                return ToolResult(
+                    output=None,
+                    error=f"无法获取文件下载链接，文件ID: {file_id}"
+                )
+            
             file_name = file_info.get("display_name")
             content_type = file_info.get("content-type", "")
+            file_size = file_info.get("size", 0)
             
             if not read_content:
                 return ToolResult(
-                    output=f"文件下载链接: {file_url}",
+                    output=f"📎 文件: {file_name}\n"
+                           f"下载链接: {file_url}\n"
+                           f"大小: {file_size / (1024*1024):.2f} MB",
                     error=None
                 )
             
-            # 下载文件内容（不需要认证头，因为public_url已包含认证）
+            # 下载文件内容（使用带verifier的URL，不需要额外认证）
             async with aiohttp.ClientSession() as session:
                 async with session.get(file_url) as response:
                     if response.status == 200:
                         # 根据文件类型处理
-                        if "text" in content_type or file_name.endswith(('.txt', '.md', '.py', '.java', '.cpp', '.c')):
+                        if "text" in content_type or file_name.endswith(('.txt', '.md', '.py', '.java', '.cpp', '.c', '.js', '.html', '.css', '.json', '.xml')):
                             # 文本文件
                             content = await response.text()
+                            # 如果内容太长，只显示前5000字符
+                            if len(content) > 5000:
+                                content = content[:5000] + "\n\n... (内容过长，已截断，完整内容请使用下载链接)"
+                            
                             output = f"📄 文件: {file_name}\n"
                             output += f"类型: 文本文件\n"
-                            output += f"内容:\n{'-'*60}\n{content}\n{'-'*60}"
+                            output += f"大小: {file_size / 1024:.2f} KB\n"
+                            output += f"下载链接: {file_url}\n"
+                            output += f"\n内容:\n{'-'*60}\n{content}\n{'-'*60}"
                             
                         elif "pdf" in content_type or file_name.endswith('.pdf'):
                             # PDF 文件
                             output = f"📕 PDF 文件: {file_name}\n"
-                            output += f"大小: {file_info.get('size', 0) / (1024*1024):.2f} MB\n"
+                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
                             output += f"下载链接: {file_url}\n"
                             output += f"提示: PDF内容需要专门的PDF阅读工具处理"
                             
-                        elif any(ext in content_type for ext in ["image", "png", "jpg", "jpeg", "gif"]):
+                        elif any(ext in content_type for ext in ["image", "png", "jpg", "jpeg", "gif", "webp"]):
                             # 图片文件
                             output = f"🖼️ 图片文件: {file_name}\n"
                             output += f"类型: {content_type}\n"
-                            output += f"大小: {file_info.get('size', 0) / 1024:.2f} KB\n"
-                            output += f"预览链接: {file_url}"
+                            output += f"大小: {file_size / 1024:.2f} KB\n"
+                            output += f"下载链接: {file_url}\n"
+                            output += f"提示: 请使用下载链接在浏览器中查看图片"
+                            
+                        elif any(ext in file_name.lower() for ext in ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']):
+                            # Office 文件
+                            output = f"📊 Office 文件: {file_name}\n"
+                            output += f"类型: {content_type}\n"
+                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
+                            output += f"下载链接: {file_url}\n"
+                            output += f"提示: 请下载后使用对应的Office软件打开"
                             
                         else:
                             # 其他文件类型
                             output = f"📎 文件: {file_name}\n"
                             output += f"类型: {content_type}\n"
-                            output += f"大小: {file_info.get('size', 0) / (1024*1024):.2f} MB\n"
+                            output += f"大小: {file_size / (1024*1024):.2f} MB\n"
                             output += f"下载链接: {file_url}"
                         
                         return ToolResult(output=output, error=None)
                     else:
+                        # 即使下载失败，也返回下载链接
                         return ToolResult(
-                            output=None, 
-                            error=f"下载文件失败 (状态码: {response.status})"
+                            output=f"⚠️ 自动读取失败 (状态码: {response.status})\n\n"
+                                   f"📎 文件: {file_name}\n"
+                                   f"下载链接: {file_url}\n"
+                                   f"提示: 请直接使用下载链接在浏览器中访问", 
+                            error=None
                         )
             
         except Exception as e:
@@ -1251,6 +1263,457 @@ class CanvasSearchFiles(CanvasAPIBase):
             return ToolResult(output=None, error=f"搜索文件失败: {str(e)}")
 
 
+@TOOL.register_module(name="vector_store_list", force=True)
+class VectorStoreList(AsyncTool):
+    """列出所有可用的 Vector Stores"""
+    
+    name = "vector_store_list"
+    description = "列出所有可用的课程知识库（Vector Stores），显示每个知识库的ID、名称和文件数量"
+    
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False
+    }
+    
+    output_type = "any"
+    
+    async def forward(self) -> ToolResult:
+        """获取 Vector Store 列表"""
+        try:
+            # 导入 OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return ToolResult(
+                    output=None,
+                    error="OpenAI 库未安装，请运行: pip install openai"
+                )
+            
+            # 获取 API Key
+            import os
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                return ToolResult(
+                    output=None,
+                    error="未配置 OPENAI_API_KEY，请在 .env 文件中添加"
+                )
+            
+            # 创建客户端
+            client = OpenAI(
+                api_key=openai_api_key,
+                default_headers={"OpenAI-Beta": "assistants=v2"}
+            )
+            
+            # 获取 Vector Stores
+            response = client.vector_stores.list(limit=100)
+            vector_stores = list(response.data)
+            
+            if not vector_stores:
+                return ToolResult(
+                    output="📋 当前没有可用的知识库\n请先运行 file_index_downloader.py 创建知识库",
+                    error=None
+                )
+            
+            # 格式化输出
+            output = f"📚 找到 {len(vector_stores)} 个课程知识库:\n\n"
+            
+            for i, vs in enumerate(vector_stores, 1):
+                file_count = vs.file_counts.total if hasattr(vs, 'file_counts') else 0
+                output += f"{i}. [{vs.id}] {vs.name}\n"
+                output += f"   📁 文件数量: {file_count}\n"
+                if hasattr(vs, 'created_at'):
+                    output += f"   📅 创建时间: {vs.created_at}\n"
+                output += "\n"
+            
+            return ToolResult(output=output, error=None)
+            
+        except Exception as e:
+            return ToolResult(output=None, error=f"获取知识库列表失败: {str(e)}")
+
+
+@TOOL.register_module(name="vector_store_search", force=True)
+class VectorStoreSearch(AsyncTool):
+    """在 Vector Store 中搜索相关内容"""
+    
+    name = "vector_store_search"
+    description = "在指定的课程知识库中搜索相关内容，可以回答关于课程材料、讲义、作业等的问题"
+    
+    parameters = {
+        "type": "object",
+        "properties": {
+            "vector_store_id": {
+                "type": "string",
+                "description": "Vector Store ID（从 vector_store_list 工具获取）"
+            },
+            "query": {
+                "type": "string",
+                "description": "搜索查询，例如：'这门课的主要内容是什么？'、'作业1的要求'等"
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "返回的最大结果数（默认5）",
+                "nullable": True
+            }
+        },
+        "required": ["vector_store_id", "query"],
+        "additionalProperties": False
+    }
+    
+    output_type = "any"
+    
+    async def forward(self, vector_store_id: str, query: str, max_results: int = 5) -> ToolResult:
+        """搜索 Vector Store"""
+        try:
+            # 导入 OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return ToolResult(
+                    output=None,
+                    error="OpenAI 库未安装，请运行: pip install openai"
+                )
+            
+            # 获取 API Key
+            import os
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                return ToolResult(
+                    output=None,
+                    error="未配置 OPENAI_API_KEY，请在 .env 文件中添加"
+                )
+            
+            # 创建客户端
+            client = OpenAI(
+                api_key=openai_api_key,
+                default_headers={"OpenAI-Beta": "assistants=v2"}
+            )
+            
+            # 执行搜索
+            response = client.vector_stores.search(
+                vector_store_id=vector_store_id,
+                query=query,
+                max_num_results=max_results
+            )
+            
+            # 检查结果
+            if not response or not hasattr(response, 'data') or not response.data:
+                return ToolResult(
+                    output=f"🔍 搜索查询: \"{query}\"\n❌ 未找到相关内容",
+                    error=None
+                )
+            
+            # 格式化输出
+            output = f"🔍 搜索查询: \"{query}\"\n"
+            output += f"📊 找到 {len(response.data)} 个相关结果:\n\n"
+            
+            for i, result in enumerate(response.data, 1):
+                output += f"{'='*60}\n"
+                output += f"结果 {i}:\n"
+                
+                # 相关性分数
+                if hasattr(result, 'score'):
+                    output += f"📈 相关性: {result.score:.2%}\n"
+                
+                # 文件名
+                if hasattr(result, 'filename'):
+                    output += f"📄 来源: {result.filename}\n"
+                
+                # 元数据
+                if hasattr(result, 'attributes') and result.attributes:
+                    output += f"🏷️  属性: {result.attributes}\n"
+                
+                # 内容
+                if hasattr(result, 'content'):
+                    content = result.content
+                    # 限制长度
+                    if len(content) > 800:
+                        content = content[:800] + "...\n(内容已截断)"
+                    output += f"\n📝 内容:\n{content}\n"
+                
+                output += "\n"
+            
+            return ToolResult(output=output, error=None)
+            
+        except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+            return ToolResult(
+                output=None,
+                error=f"搜索失败: {str(e)}\n详情: {error_detail[:500]}"
+            )
+
+
+@TOOL.register_module(name="vector_store_list_files", force=True)
+class VectorStoreListFiles(AsyncTool):
+    """列出 Vector Store 中的所有文件"""
+    
+    name = "vector_store_list_files"
+    description = "列出指定知识库中的所有文件，显示文件ID、名称、状态等信息，可选择读取文件内容"
+    
+    parameters = {
+        "type": "object",
+        "properties": {
+            "vector_store_id": {
+                "type": "string",
+                "description": "Vector Store ID（从 vector_store_list 工具获取）"
+            },
+            "read_content": {
+                "type": "boolean",
+                "description": "是否读取文件内容（默认False，仅列出文件信息）",
+                "nullable": True
+            },
+            "limit": {
+                "type": "integer",
+                "description": "返回的最大文件数（默认20）",
+                "nullable": True
+            }
+        },
+        "required": ["vector_store_id"],
+        "additionalProperties": False
+    }
+    
+    output_type = "any"
+    
+    async def forward(self, vector_store_id: str, read_content: bool = False, limit: int = 20) -> ToolResult:
+        """列出 Vector Store 文件"""
+        try:
+            # 导入 OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return ToolResult(
+                    output=None,
+                    error="OpenAI 库未安装，请运行: pip install openai"
+                )
+            
+            # 获取 API Key
+            import os
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                return ToolResult(
+                    output=None,
+                    error="未配置 OPENAI_API_KEY，请在 .env 文件中添加"
+                )
+            
+            # 创建客户端
+            client = OpenAI(
+                api_key=openai_api_key,
+                default_headers={"OpenAI-Beta": "assistants=v2"}
+            )
+            
+            # 获取 Vector Store 文件列表
+            response = client.vector_stores.files.list(
+                vector_store_id=vector_store_id,
+                limit=limit
+            )
+            
+            files = list(response.data)
+            
+            if not files:
+                return ToolResult(
+                    output=f"📋 Vector Store [{vector_store_id}] 中没有文件",
+                    error=None
+                )
+            
+            # 格式化输出
+            output = f"📚 Vector Store [{vector_store_id}] 文件列表:\n"
+            output += f"找到 {len(files)} 个文件\n\n"
+            
+            for i, file in enumerate(files, 1):
+                output += f"{'='*60}\n"
+                output += f"文件 {i}:\n"
+                output += f"🆔 File ID: {file.id}\n"
+                
+                if hasattr(file, 'status'):
+                    status_emoji = "✅" if file.status == "completed" else "⏳"
+                    output += f"{status_emoji} 状态: {file.status}\n"
+                
+                if hasattr(file, 'created_at'):
+                    from datetime import datetime
+                    created = datetime.fromtimestamp(file.created_at)
+                    output += f"📅 创建时间: {created.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                
+                # 如果需要读取内容
+                if read_content and file.status == "completed":
+                    try:
+                        # 获取文件详细信息
+                        file_info = client.files.retrieve(file.id)
+                        
+                        if hasattr(file_info, 'filename'):
+                            output += f"📄 文件名: {file_info.filename}\n"
+                        
+                        if hasattr(file_info, 'bytes'):
+                            output += f"📦 大小: {file_info.bytes / 1024:.2f} KB\n"
+                        
+                        # 尝试读取文件内容
+                        try:
+                            content_response = client.files.content(file.id)
+                            content = content_response.read()
+                            
+                            # 尝试解码为文本
+                            try:
+                                text_content = content.decode('utf-8')
+                                # 限制长度
+                                if len(text_content) > 1000:
+                                    text_content = text_content[:1000] + "\n...(内容已截断)"
+                                output += f"\n📝 内容预览:\n{text_content}\n"
+                            except:
+                                output += f"\n⚠️  无法显示文件内容（非文本文件或编码问题）\n"
+                                output += f"   文件大小: {len(content)} 字节\n"
+                        except Exception as e:
+                            output += f"\n⚠️  读取内容失败: {str(e)}\n"
+                    
+                    except Exception as e:
+                        output += f"\n⚠️  获取文件信息失败: {str(e)}\n"
+                
+                output += "\n"
+            
+            return ToolResult(output=output, error=None)
+            
+        except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+            return ToolResult(
+                output=None,
+                error=f"获取文件列表失败: {str(e)}\n详情: {error_detail[:500]}"
+            )
+
+
+@TOOL.register_module(name="vector_store_get_file", force=True)
+class VectorStoreGetFile(AsyncTool):
+    """根据 file_id 获取和读取文件内容"""
+    
+    name = "vector_store_get_file"
+    description = "根据 file_id 获取文件详细信息并读取内容，支持文本文件的完整内容展示"
+    
+    parameters = {
+        "type": "object",
+        "properties": {
+            "file_id": {
+                "type": "string",
+                "description": "OpenAI File ID（从 vector_store_list_files 工具获取）"
+            },
+            "max_length": {
+                "type": "integer",
+                "description": "最大显示长度（默认5000字符）",
+                "nullable": True
+            }
+        },
+        "required": ["file_id"],
+        "additionalProperties": False
+    }
+    
+    output_type = "any"
+    
+    async def forward(self, file_id: str, max_length: int = 5000) -> ToolResult:
+        """获取文件内容"""
+        try:
+            # 导入 OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return ToolResult(
+                    output=None,
+                    error="OpenAI 库未安装，请运行: pip install openai"
+                )
+            
+            # 获取 API Key
+            import os
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                return ToolResult(
+                    output=None,
+                    error="未配置 OPENAI_API_KEY，请在 .env 文件中添加"
+                )
+            
+            # 创建客户端
+            client = OpenAI(
+                api_key=openai_api_key,
+                default_headers={"OpenAI-Beta": "assistants=v2"}
+            )
+            
+            # 获取文件信息
+            file_info = client.files.retrieve(file_id)
+            
+            output = f"📄 文件详细信息:\n"
+            output += f"{'='*60}\n"
+            output += f"🆔 File ID: {file_info.id}\n"
+            
+            if hasattr(file_info, 'filename'):
+                output += f"📝 文件名: {file_info.filename}\n"
+            
+            if hasattr(file_info, 'purpose'):
+                output += f"🎯 用途: {file_info.purpose}\n"
+            
+            if hasattr(file_info, 'bytes'):
+                size_kb = file_info.bytes / 1024
+                size_mb = size_kb / 1024
+                if size_mb >= 1:
+                    output += f"📦 大小: {size_mb:.2f} MB\n"
+                else:
+                    output += f"📦 大小: {size_kb:.2f} KB\n"
+            
+            if hasattr(file_info, 'created_at'):
+                from datetime import datetime
+                created = datetime.fromtimestamp(file_info.created_at)
+                output += f"📅 创建时间: {created.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            
+            if hasattr(file_info, 'status'):
+                status_emoji = "✅" if file_info.status == "processed" else "⏳"
+                output += f"{status_emoji} 状态: {file_info.status}\n"
+            
+            output += f"\n{'='*60}\n"
+            
+            # 尝试读取文件内容
+            try:
+                content_response = client.files.content(file_id)
+                content = content_response.read()
+                
+                # 尝试解码为文本
+                try:
+                    text_content = content.decode('utf-8')
+                    
+                    output += f"\n📖 文件内容:\n"
+                    output += f"{'='*60}\n"
+                    
+                    if len(text_content) > max_length:
+                        output += text_content[:max_length]
+                        output += f"\n\n{'='*60}\n"
+                        output += f"⚠️  内容已截断（显示 {max_length}/{len(text_content)} 字符）\n"
+                        output += f"完整内容共 {len(text_content)} 字符\n"
+                    else:
+                        output += text_content
+                        output += f"\n{'='*60}\n"
+                        output += f"✅ 已显示完整内容（{len(text_content)} 字符）\n"
+                
+                except UnicodeDecodeError:
+                    output += f"\n⚠️  文件是二进制格式，无法显示为文本\n"
+                    output += f"文件大小: {len(content)} 字节\n"
+                    
+                    # 尝试判断文件类型
+                    if content.startswith(b'%PDF'):
+                        output += f"文件类型: PDF 文档\n"
+                    elif content.startswith(b'\x50\x4b'):
+                        output += f"文件类型: ZIP/Office 文档\n"
+                    else:
+                        output += f"文件类型: 未知二进制文件\n"
+            
+            except Exception as e:
+                output += f"\n⚠️  读取文件内容失败: {str(e)}\n"
+            
+            return ToolResult(output=output, error=None)
+            
+        except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+            return ToolResult(
+                output=None,
+                error=f"获取文件失败: {str(e)}\n详情: {error_detail[:500]}"
+            )
+
+
 # 导出所有工具
 __all__ = [
     "CanvasListCourses",
@@ -1275,6 +1738,10 @@ __all__ = [
     "CanvasGetTodoItems",
     "CanvasGetUpcomingEvents",
     "CanvasGetGroups",
+    "VectorStoreList",
+    "VectorStoreSearch",
+    "VectorStoreListFiles",
+    "VectorStoreGetFile",
 ]
 
 

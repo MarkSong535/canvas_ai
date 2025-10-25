@@ -28,6 +28,10 @@ from src.tools.canvas_tools import (
     CanvasGetTodoItems,
     CanvasGetUpcomingEvents,
     CanvasGetGroups,
+    VectorStoreList,
+    VectorStoreSearch,
+    VectorStoreListFiles,
+    VectorStoreGetFile,
 )
 
 # Canvas 学生 Agent 配置
@@ -63,6 +67,10 @@ canvas_student_agent_config = dict(
         CanvasGetTodoItems(),             # 获取待办事项
         CanvasGetUpcomingEvents(),        # 获取即将事件
         CanvasGetGroups(),                # 获取小组
+        VectorStoreList(),                # 列出知识库
+        VectorStoreSearch(),              # 搜索知识库
+        VectorStoreListFiles(),           # 列出知识库文件
+        VectorStoreGetFile(),             # 读取文件内容
     ],
     
     # Agent 系统提示词可以在这里自定义

@@ -90,7 +90,13 @@ python canvas_chat.py
 
 ## 使用示例
 
-### 基础查询
+### 方式 1: 交互式控制台
+
+```bash
+python canvas_chat.py
+```
+
+基础对话：
 ```
 用户: 我有哪些课程？
 助手: [列出所有课程]
@@ -99,16 +105,16 @@ python canvas_chat.py
 助手: [显示作业列表及截止日期]
 ```
 
-### 文件操作
+文件操作：
 ```
 用户: 搜索所有PDF文件
 助手: [显示PDF文件列表]
 
-用户: 下载课件.pdf
+用户: 下载文件 12345
 助手: [下载并显示文件内容或链接]
 ```
 
-### 作业管理
+作业管理：
 ```
 用户: 我有什么待办事项？
 助手: [显示待办事项列表]
@@ -116,6 +122,35 @@ python canvas_chat.py
 用户: 提交作业1，内容是...
 助手: [提交作业]
 ```
+
+### 方式 2: 测试示例脚本
+
+#### 使用 Agent 进行完整测试
+
+```bash
+# 交互式测试（推荐）
+python examples/test_file_download.py
+
+# 快速下载指定文件
+python examples/test_file_download.py <file_id>
+```
+
+#### 直接测试 API 工具
+
+```bash
+# 交互式测试所有文件操作
+python examples/direct_file_download_test.py
+
+# 快速测试指定文件下载
+python examples/direct_file_download_test.py <file_id>
+```
+
+**测试流程示例：**
+1. 列出所有课程
+2. 选择课程查看文件列表
+3. 获取文件详细信息
+4. 下载文件（支持文本、PDF、图片等多种格式）
+5. 搜索特定关键词的文件
 
 ## 技术架构
 
