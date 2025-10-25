@@ -1,5 +1,6 @@
 import logging
 import json
+from io import StringIO
 from enum import IntEnum
 from typing import List, Optional
 
@@ -34,6 +35,10 @@ class AgentLogger(logging.Logger, metaclass=Singleton):
             fmt="\033[92m%(asctime)s - %(name)s:%(levelname)s\033[0m: %(filename)s:%(lineno)s - %(message)s",
             datefmt="%H:%M:%S",
         )
+
+        # Provide default consoles so log methods remain safe before initialization
+        self.console = Console()
+        self.file_console = Console(file=StringIO())
 
     def init_logger(self, log_path: str, level=logging.DEBUG):
         """
