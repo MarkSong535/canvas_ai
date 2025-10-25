@@ -1,208 +1,198 @@
 # Canvas Student Agent
 
-An OpenAI-powered assistant for Canvas LMS designed for student accounts.
+An OpenAI-powered Canvas LMS companion tailored for student accounts. The project ships with a conversational CLI, a WebSocket service for machine-to-machine integrations, and a bulk file downloader that can populate OpenAI Vector Stores.
 
-## Features
+---
 
-- 🎓 **Student Scope**: Tailored to the Canvas API permissions granted to students
-- 🤖 **Conversational Interface**: Natural language chat powered by OpenAI GPT-4o
-- 🛠️ **22+ API Tools**: Coverage for courses, assignments, files, discussions, and more
-- 💬 **Interactive CLI**: Rich-powered console for real-time conversations
-- 🔐 **Secure Configuration**: Environment variables keep credentials outside the codebase
+## Key Capabilities
 
-## Canvas API Tools
+- Student-safe Canvas API coverage with 20+ tools for courses, assignments, files, discussions, grades, and calendar data.
+- Rich-powered command line chat experience (`canvas_chat.py`).
+- Bulk file synchronization (`file_index_downloader.py`) with optional OpenAI Vector Store uploads.
+- WebSocket bridge (`ws_server.py`) that exposes agent chat and download workflows with password + TOTP authentication.
+- Example clients (`ws_test.py`, scripts in `examples/`) demonstrating common workflows.
 
-### 📚 Course Management
-- `canvas_list_courses` – List enrolled courses
-- `canvas_get_modules` – Fetch course modules
-- `canvas_get_module_items` – Fetch module items
+---
 
-### 📝 Assignments and Submissions
-- `canvas_get_assignments` – List assignments
-- `canvas_submit_assignment` – Submit an assignment
+## Repository Layout
 
-### 📁 File Management
-- `canvas_get_files` – List files
-- `canvas_get_file_info` – Get file metadata
-- `canvas_download_file` – Download a file
-- `canvas_get_folders` – List folders
-- `canvas_get_folder_files` – List files inside a folder
-- `canvas_search_files` – Search files by keyword
-
-### 💬 Discussions and Announcements
-- `canvas_get_discussions` – List discussion topics
-- `canvas_post_discussion` – Reply to a discussion
-- `canvas_get_announcements` – List announcements
-
-### 📖 Course Content
-- `canvas_get_pages` – List course pages
-- `canvas_get_page_content` – Fetch page content
-
-### 📊 Grades and Schedule
-- `canvas_get_grades` – Retrieve grades
-- `canvas_get_calendar_events` – List calendar events
-- `canvas_get_todo_items` – Retrieve to-do items
-- `canvas_get_upcoming_events` – List upcoming events
-
-### 📝 Quizzes and Groups
-- `canvas_get_quizzes` – List quizzes
-- `canvas_get_groups` – List groups
-
-## Quick Start
-
-### 1. Configure Environment Variables
-
-Create a `.env` file in the project root and configure both OpenAI and Canvas settings:
-
-```env
-# OpenAI public API
-OPENAI_API_KEY=your-openai-api-key
-# OPENAI_API_BASE=https://api.openai.com/v1        # Optional custom base URL
-# OPENAI_ORGANIZATION=org-id                        # Optional
-# OPENAI_PROJECT=project-id                         # Optional
-
-# Canvas LMS
-CANVAS_URL=https://your-school.instructure.com
-CANVAS_ACCESS_TOKEN=your-canvas-token-here
+```
+canvas_ai/
+├── canvas_chat.py            # Interactive console entry point
+├── file_index_downloader.py  # Bulk download + optional vector store upload
+├── ws_server.py              # Authenticated WebSocket bridge
+├── ws_test.py                # Example sync WebSocket client
+├── configs/
+│   └── canvas_agent_config.py
+├── src/
+│   ├── agent/                # Agent builders and prompts
+│   ├── tools/                # Canvas tool implementations
+│   ├── models/               # Model manager + providers
+│   ├── logger/               # Rich-based logging utilities
+│   └── ...
+├── examples/                 # Guided demos and tool exercises
+├── requirements.txt
+└── README.md
 ```
 
-### 2. Install Dependencies
+---
+
+## Prerequisites
+
+- Python 3.11+
+- A Canvas LMS account with student-level API access
+- An OpenAI API key (GPT-4o or compatible model)
+- Optional: Assistants v2 Vector Store access if you plan to upload files
+
+---
+
+## Environment Configuration
+
+Create a `.env` file (see `env_example.txt` for a template):
+
+```env
+# LLM provider
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key
+
+# Canvas API
+CANVAS_URL=https://your-school.instructure.com
+CANVAS_ACCESS_TOKEN=your-canvas-token
+
+# WebSocket server
+CANVAS_WS_SECRET=choose-a-strong-password
+CANVAS_WS_TOTP_SECRET=base32-totp-secret
+CANVAS_WS_HOST=0.0.0.0              # Optional override
+CANVAS_WS_PORT=8765                 # Optional override
+
+# Test client overrides (optional)
+CANVAS_WS_URI=ws://localhost:8765
+CANVAS_WS_TEST_COURSE_IDS=43210,48765
+CANVAS_WS_TEST_COURSE_INDICES=1,3
+CANVAS_WS_TEST_SKIP=false
+```
+
+> **Generating a Canvas access token**
+> 1. Log in to Canvas → Account → Settings → Approved Integrations
+> 2. Click **+ New Access Token**
+> 3. Add a description and (optionally) an expiration
+> 4. Generate and copy the token immediately
+
+For TOTP secrets you can use any authenticator app or `pyotp.random_base32()`.
+
+---
+
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Start the Interactive Console
+Recommended extras (optional but useful during development):
+
+```bash
+pip install black ruff
+```
+
+---
+
+## Running the CLI Chat
 
 ```bash
 python canvas_chat.py
 ```
 
-## Generate a Canvas Access Token
+Sample interaction:
 
-1. Sign in to your Canvas account
-2. Open the **Account** menu on the left navigation
-3. Choose **Settings**
-4. Scroll to **Approved Integrations**
-5. Click **+ New Access Token**
-6. Provide a purpose and expiration (optional)
-7. Click **Generate Token**
-8. **Copy the token immediately**; Canvas will not show it again
+```
+You: List every course I am enrolled in
+Agent: Course 1 (ID 123), Course 2 (ID 456)
 
-## Usage Examples
+You: Show the upcoming assignments for Course 1
+Agent: [Table of assignments with due dates and status]
+```
 
-### Option 1: Interactive Console
+Commands available inside the CLI: `help`, `status`, `examples`, `clear`, `exit`.
+
+---
+
+## Bulk File Downloader
+
+Run locally:
 
 ```bash
-python canvas_chat.py
+python file_index_downloader.py           # Full download + optional vector upload
+python file_index_downloader.py --upload-only  # Skip downloads, upload existing files
 ```
 
-Sample dialog:
-```
-User: What courses am I enrolled in?
-Assistant: [Lists courses]
+Features:
 
-User: Show me the assignments for Data Structures.
-Assistant: [Shows due dates and statuses]
-```
+- Downloads per-course directory trees under `file_index/`
+- Supports incremental runs (skips unchanged files)
+- Optionally uploads supported formats to OpenAI Vector Stores (PDF, DOCX, PPTX, CSV, etc.)
+- Produces a `download_report.json` summary and `vector_stores_mapping.json`
 
-File workflow:
-```
-User: Find all PDF files.
-Assistant: [Returns matching files]
+When driven via WebSocket automation the downloader skips interactive prompts and returns statistics in the response payload.
 
-User: Download file 12345.
-Assistant: [Downloads and provides the file]
-```
+---
 
-Assignment workflow:
-```
-User: What is on my to-do list?
-Assistant: [Returns to-do items]
+## WebSocket Service
 
-User: Submit assignment 1 with the following text...
-Assistant: [Submits the assignment]
-```
-
-### Option 2: Example Scripts
-
-#### Full Agent Walkthrough
+Start the server (after configuring `.env`):
 
 ```bash
-# Guided download test (recommended)
-python examples/test_file_download.py
-
-# Download a specific file quickly
-python examples/test_file_download.py <file_id>
+python ws_server.py
 ```
 
-#### Direct Tool Tests
+Authentication flow:
+
+1. Client opens a WebSocket connection to `ws://host:port`
+2. Client sends `{ "type": "auth", "password": "...", "totp": "123456" }`
+3. Server verifies the secret and replies `{ "status": "authenticated" }`
+4. Subsequent messages can be:
+	 - Chat: `{ "type": "chat", "query": "List my courses" }`
+	 - Download: staged workflow
+		 - Request course list -> `{ "type": "download" }`
+		 - Server responds with numbered courses
+		 - Client selects -> `{ "type": "download", "course_indices": [1,3], "auto_confirm": true }`
+		 - Server streams the final status and statistics
+
+### Example client
 
 ```bash
-# Interactive file-operations test
-python examples/direct_file_download_test.py
+# Chat mode
+python ws_test.py
 
-# Quickly download a specific file
-python examples/direct_file_download_test.py <file_id>
+# Download mode (make sure CANVAS_WS_TEST_* envs are set)
+python ws_test.py download
 ```
 
-**Suggested testing flow:**
-1. List available courses
-2. Select a course and view its files
-3. Inspect file metadata
-4. Download files (text, PDF, images, etc.)
-5. Search files by keyword
+The test client authenticates once per session and prints responses to stdout. In download mode it displays the course roster before sending the follow-up selection.
 
-## Architecture
+---
 
-- **Framework**: Custom agent framework
-- **AI Models**: OpenAI GPT-4o and compatible models
-- **Async Runtime**: aiohttp + asyncio
-- **CLI**: Rich for terminal rendering
-- **Configuration**: python-dotenv
+## Example Scripts
 
-## Project Layout
+- `examples/test_file_download.py` – Guided walkthrough of downloading Canvas files through the agent
+- `examples/direct_file_download_test.py` – Low-level Canvas file operations
+- `examples/test_vector_store_tools.py` – Demonstrates vector-store search and listing
 
-```
-canvas_ai/
-├── src/
-│   ├── agent/           # Core agent logic
-│   ├── tools/           # Canvas API tools
-│   ├── models/          # Model manager
-│   ├── config/          # Configuration helpers
-│   └── utils/           # Utility functions
-├── configs/
-│   └── canvas_agent_config.py  # Agent configuration
-├── canvas_chat.py       # Interactive console entry point
-├── requirements.txt     # Dependencies
-└── .env                 # Environment variables (user-provided)
-```
+---
 
-## Notes
+## Troubleshooting
 
-1. **Permission scope**: All tools operate with student-level permissions
-2. **Token security**: Do not commit `.env` or access tokens
-3. **API limits**: Canvas enforces rate limits—add delays when batching requests
-4. **File access**: Some files may require browser access if Canvas restricts downloads
+- **Authentication failed** → Verify `CANVAS_WS_SECRET` and `CANVAS_WS_TOTP_SECRET`; update your authenticator if the TOTP window drifts.
+- **Missing dependencies** → Re-run `pip install -r requirements.txt`.
+- **Canvas 401 errors** → Regenerate your Canvas access token or confirm the URL points to the correct subdomain.
+- **Vector store upload errors** → Ensure `openai>=1.20.0` and that your account has Assistants v2 access.
 
-## FAQ
+---
 
-### Q: How do I find my Canvas URL?
-A: Use the domain you see in your browser when visiting Canvas, e.g., `https://canvas.university.edu`.
+## License and Contact
 
-### Q: What if my access token expires?
-A: Generate a new token in Canvas Settings and update your `.env` file.
+This project is provided for educational use. Reach out via GitHub Issues for feedback or questions.
 
-### Q: Why can’t I download certain files?
-A: Instructors can restrict downloads; use the Canvas web interface if you encounter a permission error.
-
-## License
-
-This project is provided for educational use only.
-
-## Contact
-
+- GitHub: [@MarkSong535](https://github.com/MarkSong535)
 - GitHub: [@Deyu-Zhang](https://github.com/Deyu-Zhang)
-- GitHub: [@MarkSong535](https://github.com/marksong535)
 - Email: marksong535@gmail.com
 
