@@ -420,6 +420,14 @@
                 setChatPending(true);
             };
 
+            const handleChatPressEnter = (event) => {
+                if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+                    return;
+                }
+                event.preventDefault();
+                handleSendChat();
+            };
+
             const handleSelectCourses = () => {
                 if (courseList.length === 0) {
                     message.info('Course list is empty or not yet loaded.');
@@ -629,6 +637,7 @@
                                                         placeholder="e.g. List my Canvas courses"
                                                         value={chatQuery}
                                                         onChange={e => setChatQuery(e.target.value)}
+                                                        onPressEnter={handleChatPressEnter}
                                                         disabled={!canChat}
                                                     />
                                                 </Form.Item>
