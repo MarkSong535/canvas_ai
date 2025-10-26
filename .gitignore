@@ -52,4 +52,8 @@ htmlcov/
 
 # pending upload
 file_index
+
 dockerfile
+*.pem
+.gitignore
+*.key

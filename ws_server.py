@@ -6,6 +6,7 @@ import asyncio
 from copy import deepcopy
 import json
 import os
+import ssl
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
@@ -30,6 +31,14 @@ TOTP_DISABLED = os.getenv("CANVAS_WS_TOTP_DISABLED", "false").strip().lower() in
     "yes",
     "on",
 }
+WSS_ENABLED = os.getenv("WSS_ENABLED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+WSS_CERTFILE = os.getenv("WSS_CERTFILE")
+WSS_KEYFILE = os.getenv("WSS_KEYFILE")
 
 
 async def build_agent() -> Any:
@@ -280,7 +289,14 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
 
 async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:
     """Start the WebSocket server."""
-    async with serve(websocket_handler, host, port, logger=None):
+    ssl_context: Optional[ssl.SSLContext] = None
+    if WSS_ENABLED:
+        if not WSS_CERTFILE or not WSS_KEYFILE:
+            raise RuntimeError("WSS_ENABLED requires WSS_CERTFILE and WSS_KEYFILE to be set.")
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(certfile=WSS_CERTFILE, keyfile=WSS_KEYFILE)
+
+    async with serve(websocket_handler, host, port, logger=None, ssl=ssl_context):
         await asyncio.Future()
 
 
