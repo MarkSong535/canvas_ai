@@ -2,807 +2,583 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Canvas AI Client</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas AI Client</title>
+    
+    <!-- 1. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- 3. Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 4. Day.js (Antd Dependency) -->
+    <script src="https://unpkg.com/dayjs@1/dayjs.min.js"></script>
+    
+    <!-- 5. Ant Design (JS & CSS) -->
+    <script src="https://unpkg.com/antd@5/dist/antd.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/antd@5/dist/reset.css" />
+
     <style>
-        :root {
-            color-scheme: light dark;
-            --background: #f5f6fa;
-            --panel: #ffffff;
-            --border: #dcdde1;
-            --primary: #273c75;
-            --accent: #44bd32;
-            --danger: #e84118;
-            --text: #2f3640;
-            --muted: #636e72;
-            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        /* Basic body styling */
+        body {
+            background-color: #f0f2f5;
         }
         @media (prefers-color-scheme: dark) {
-            :root {
-                --background: #1e1f29;
-                --panel: #2f2f3a;
-                --border: #3a3b47;
-                --primary: #74b9ff;
-                --accent: #55efc4;
-                --danger: #ff7675;
-                --text: #ecf0f1;
-                --muted: #b2bec3;
+            body {
+                background-color: #000;
             }
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            background: var(--background);
-            color: var(--text);
-        }
-        header {
-            padding: 24px;
-            background: var(--panel);
-            border-bottom: 1px solid var(--border);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        header h1 {
-            margin: 0 0 8px 0;
-            font-size: 1.8rem;
-            color: var(--primary);
-        }
-        header p {
-            margin: 0;
-            color: var(--muted);
-        }
-        main {
-            max-width: 1100px;
-            margin: 24px auto 40px auto;
-            padding: 0 16px;
-            display: grid;
-            gap: 24px;
-        }
-        section {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        section h2 {
-            margin-top: 0;
-            font-size: 1.3rem;
-            color: var(--primary);
-        }
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-        input, textarea, select {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: none;
-            color: inherit;
-            font-size: 0.95rem;
-        }
-        textarea {
-            min-height: 100px;
-            resize: vertical;
-        }
-        .inline {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-        }
-        button {
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-            padding: 10px 18px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
-            background: var(--primary);
-            color: #fff;
-        }
-        button.secondary {
-            background: var(--accent);
-            color: black;
-        }
-        button.secondary:disabled {
-            background: #95a5a6;
-            color: #ffffff;
-        }
-        button.danger {
-            background: var(--danger);
-        }
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        button:not(:disabled):hover {
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
-        }
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.55);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            z-index: 1000;
-        }
-        .modal {
-            background: var(--panel);
-            color: var(--text);
-            border-radius: 12px;
-            max-width: 520px;
-            width: 100%;
-            box-shadow: 0 16px 36px rgba(0,0,0,0.25);
-            border: 1px solid var(--border);
-            padding: 24px;
-        }
-        .modal header {
-            padding: 0 0 12px 0;
-            margin: 0 0 16px 0;
-            border-bottom: 1px solid var(--border);
-            background: none;
-            box-shadow: none;
-        }
-        .modal header h3 {
-            margin: 0;
-            color: var(--primary);
-            font-size: 1.2rem;
-        }
-        .course-list {
-            max-height: 300px;
-            overflow-y: auto;
-            margin: 0 0 16px 0;
-            padding: 0;
-            list-style: none;
-        }
-        .course-list li {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            margin-bottom: 12px;
-            background: var(--background);
-        }
-        .course-list li input[type="checkbox"] {
-            width: 20px;
-        }
-        .course-list li:last-child {
-            margin-bottom: 0;
-        }
-        .course-details {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .course-details small {
-            color: var(--muted);
-        }
-        .modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-        }
-        .log-toggle {
-            width: 100%;
-        }
-        .log-toggle summary {
-            cursor: pointer;
-            font-weight: 600;
-            list-style: none;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 1.1rem;
-            color: var(--primary);
-            outline: none;
-        }
-        .log-toggle summary::-webkit-details-marker {
-            display: none;
-        }
-        .log-toggle summary::before {
-            content: '>';
-            display: inline-block;
-            transform: rotate(0deg);
-            transition: transform 0.2s ease;
-        }
-        .log-toggle[open] summary::before {
-            transform: rotate(90deg);
-        }
-        .log-body {
-            margin-top: 16px;
-        }
-        .chat-history {
-            margin-top: 16px;
-            padding: 12px 16px;
-            background: var(--background);
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            min-height: 60px;
-            font-family: "Segoe UI", Tahoma, sans-serif;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-        .chat-entry {
-            margin-bottom: 12px;
-        }
-        .chat-entry:last-child {
-            margin-bottom: 0;
-        }
-        #log {
-            background: var(--background);
-            border-radius: 8px;
-            padding: 16px;
-            font-family: monospace;
-            font-size: 0.9rem;
-            max-height: 320px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        .log-entry {
-            margin-bottom: 12px;
-            border-left: 4px solid var(--border);
-            padding-left: 12px;
-        }
-        .log-entry.system { border-color: var(--accent); }
-        .log-entry.error { border-color: var(--danger); color: var(--danger); }
-        .log-entry.outbound { border-color: var(--primary); }
-        .log-entry.inbound { border-color: #00cec9; }
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 999px;
-            font-size: 0.75rem;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            background: var(--border);
-            color: var(--muted);
-        }
-        .flex {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .spacer { flex: 1; }
-        @media (max-width: 720px) {
-            header, main, section { border-radius: 0; }
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Canvas AI Client</h1>
-    </header>
+    <div id="root" class="h-screen"></div>
 
-    <main>
-        <section id="connection-panel">
-            <h2>Connection</h2>
-            <p style="margin-bottom: 16px;">Enter your Canvas WebSocket password.</p>
-            <div class="inline">
-                <div>
-                    <label for="secret">Password</label>
-                    <input id="secret" type="password" placeholder="CANVAS_WS_SECRET" autocomplete="off">
-                </div>
-            </div>
-            <div class="flex" style="margin-top: 16px;">
-                <button id="connect-btn">Connect & Authenticate</button>
-                <span id="status" class="badge">Disconnected</span>
-                <span class="spacer"></span>
-            </div>
-        </section>
+    <script type="text/babel">
+        // Babel will transpile all code within this script tag
 
-        <section id="chat-panel" style="display:none;">
-            <h2>Chat</h2>
-            <label for="chat-query">Query</label>
-            <textarea id="chat-query" placeholder="e.g. List my Canvas courses"></textarea>
-            <div class="flex" style="margin-top: 12px;">
-                <button id="send-chat" class="secondary" disabled>Send Chat</button>
-                <button id="select-courses" class="secondary" disabled>Select Courses for Download</button>
-            </div>
-            <div id="chat-history" class="chat-history" style="display:none;"></div>
-        </section>
+        const {
+            Button,
+            Card,
+            Checkbox,
+            Col,
+            Collapse,
+            ConfigProvider,
+            Form,
+            Input,
+            Layout,
+            Modal,
+            Row,
+            Space,
+            Spin,
+            Tag,
+            Typography,
+            App: AntApp, // Renamed to avoid conflict with our App
+            theme,
+        } = antd;
 
-        <!-- <section id="download-panel" style="display:none;">
-            <h2>Download Workflow</h2>
-            <div class="flex" style="margin-bottom: 12px;">
-                <button id="request-courses" disabled>Request Course List</button>
-                <button id="start-download" class="secondary" disabled>Start Download</button>
-                <button id="select-courses" class="secondary" disabled>Select Courses…</button>
-            </div>
-            <label for="course-ids">Course IDs (comma-separated)</label>
-            <input id="course-ids" type="text" placeholder="e.g. 43210,48765">
-            <label for="course-indices" style="margin-top:12px;">Course indices from the last list (comma-separated)</label>
-            <input id="course-indices" type="text" placeholder="e.g. 1,3">
-        </section> -->
+        const { Header, Content } = Layout;
+        const { Title, Text, Paragraph } = Typography;
+        const { Panel } = Collapse;
 
-        <section id="log-panel" style="display:none;">
-            <details id="log-toggle" class="log-toggle">
-                <summary>Log</summary>
-                <div class="log-body">
-                    <div id="log"></div>
-                </div>
-            </details>
-        </section>
-    </main>
+        const WS_ENDPOINT = 'wss://canvas.marksong.tech:8765';
 
-    <div id="course-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="course-modal-title">
-        <div class="modal">
-            <header>
-                <h3 id="course-modal-title">Select Courses to Download</h3>
-            </header>
-            <ul id="course-list" class="course-list"></ul>
-            <div class="modal-actions">
-                <button id="course-cancel" class="danger">Cancel</button>
-                <button id="course-confirm" class="secondary" disabled>Download Selected</button>
-            </div>
-        </div>
-    </div>
+        // Main React Application Component
+        function App() {
+            // Use AntApp's context for message/notification
+            const { message, notification } = AntApp.useApp();
 
-    <script>
-    const connectionPanel = document.getElementById('connection-panel');
-    const chatPanel = document.getElementById('chat-panel');
-    const downloadPanel = document.getElementById('download-panel');
-    const logSection = document.getElementById('log-panel');
-    const secretInput = document.getElementById('secret');
-    const connectBtn = document.getElementById('connect-btn');
-    const statusBadge = document.getElementById('status');
-    const sendChatBtn = document.getElementById('send-chat');
-    const requestCoursesBtn = document.getElementById('request-courses');
-    const startDownloadBtn = document.getElementById('start-download');
-    const selectCoursesBtn = document.getElementById('select-courses');
-    const chatQueryInput = document.getElementById('chat-query');
-    const courseIdsInput = document.getElementById('course-ids');
-    const courseIndicesInput = document.getElementById('course-indices');
-    const logPanel = document.getElementById('log');
-    const chatHistory = document.getElementById('chat-history');
-    const courseModal = document.getElementById('course-modal');
-    const courseListEl = document.getElementById('course-list');
-    const courseModalCancelBtn = document.getElementById('course-cancel');
-    const courseModalConfirmBtn = document.getElementById('course-confirm');
+            // --- State Management ---
+            const [password, setPassword] = React.useState('');
+            const [socket, setSocket] = React.useState(null);
+            
+            // 'Disconnected', 'Connecting', 'Connected', 'Authenticating', 'Authenticated', 'Error'
+            const [status, setStatus] = React.useState('Disconnected');
+            const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+            
+            const [chatQuery, setChatQuery] = React.useState('');
+            const [chatHistory, setChatHistory] = React.useState([]); // { role: 'user' | 'agent', text: string }
+            const [chatPending, setChatPending] = React.useState(false);
+            
+            const [courseList, setCourseList] = React.useState([]); // { id, index, name }
+            const [isModalVisible, setIsModalVisible] = React.useState(false);
+            const [selectedCourseIds, setSelectedCourseIds] = React.useState([]);
+            
+            const [logEntries, setLogEntries] = React.useState([]); // { time: string, message: string, type: 'system' | 'inbound' | 'outbound' | 'error' }
+            const logEndRef = React.useRef(null);
+            const chatHistoryEndRef = React.useRef(null);
 
-    const WS_ENDPOINT = 'wss://canvas.marksong.tech:8765';
-    let socket = null;
-        let authenticated = false;
-        let lastCourseList = [];
-        let chatPending = false;
+            // --- Computed State ---
+            const isConnected = socket && socket.readyState === WebSocket.OPEN;
+            const canChat = isConnected && isAuthenticated && !chatPending;
 
-        function updateSendChatState() {
-            const socketReady = socket && socket.readyState === WebSocket.OPEN;
-            const baseDisabled = !socketReady || !authenticated;
-            const shouldDisable = baseDisabled || chatPending;
-            sendChatBtn.disabled = shouldDisable;
-            if (selectCoursesBtn) {
-                selectCoursesBtn.disabled = shouldDisable;
-            }
-        }
+            // --- Utility Functions ---
+            
+            /**
+             * Adds a new entry to the log state.
+             */
+            const log = React.useCallback((message, type = 'system') => {
+                const timestamp = new Date().toLocaleTimeString();
+                setLogEntries(prev => [...prev, { time: timestamp, message, type }]);
+            }, []);
 
-        function log(message, type = 'system') {
-            const timestamp = new Date().toLocaleTimeString();
-            if (!logPanel) {
-                // Fallback to console if the UI log container is unavailable
-                const prefix = type === 'error' ? '[ERROR]' : '[LOG]';
-                console.log(`${prefix} [${timestamp}] ${message}`);
-                return;
-            }
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            entry.textContent = `[${timestamp}] ${message}`;
-            logPanel.appendChild(entry);
-            logPanel.scrollTop = logPanel.scrollHeight;
-        }
+            /**
+             * Scrolls the log panel to the bottom.
+             */
+            React.useEffect(() => {
+                logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [logEntries]);
+            
+            /**
+             * Scrolls the chat history to the bottom.
+             */
+            React.useEffect(() => {
+                chatHistoryEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [chatHistory]);
 
-        function setConnectedState(isConnected) {
-            connectBtn.disabled = isConnected;
-            if (requestCoursesBtn) {
-                requestCoursesBtn.disabled = !isConnected || !authenticated;
-            }
-            if (startDownloadBtn) {
-                startDownloadBtn.disabled = !isConnected || !authenticated;
-            }
-            if (selectCoursesBtn) {
-                selectCoursesBtn.disabled = !isConnected || !authenticated;
-            }
-            statusBadge.textContent = isConnected ? (authenticated ? 'Authenticated' : 'Connected') : 'Disconnected';
-            statusBadge.style.background = isConnected ? (authenticated ? '#55efc4' : '#74b9ff') : 'var(--border)';
-            statusBadge.style.color = isConnected ? '#000' : 'var(--muted)';
-            updateSendChatState();
-        }
+            // --- WebSocket Logic ---
 
-        function setAuthenticatedState(isAuthenticated) {
-            authenticated = isAuthenticated;
-            if (requestCoursesBtn) {
-                requestCoursesBtn.disabled = !isAuthenticated;
-            }
-            if (startDownloadBtn) {
-                startDownloadBtn.disabled = !isAuthenticated;
-            }
-            if (selectCoursesBtn) {
-                selectCoursesBtn.disabled = !isAuthenticated;
-            }
-        statusBadge.textContent = isAuthenticated ? 'Authenticated' : (socket ? 'Connected' : 'Disconnected');
-            statusBadge.style.background = isAuthenticated ? '#55efc4' : (socket ? '#74b9ff' : 'var(--border)');
-            statusBadge.style.color = isAuthenticated ? '#000' : 'var(--muted)';
-            if (!isAuthenticated) {
-                chatPending = false;
-                if (courseModalConfirmBtn) {
-                    courseModalConfirmBtn.disabled = true;
+            /**
+             * Parses a JSON string safely.
+             */
+            const safeParseJSON = (text) => {
+                try {
+                    return JSON.parse(text);
+                } catch (error) {
+                    log(`Failed to parse JSON: ${text}`, 'error');
+                    return null;
                 }
-            }
-            updateSendChatState();
-        }
-
-    function showContentPanels(show) {
-    const display = show ? '' : 'none';
-    if (chatPanel) chatPanel.style.display = display;
-    if (downloadPanel) downloadPanel.style.display = display;
-    if (logSection) logSection.style.display = display;
-        if (chatHistory) {
-            chatHistory.style.display = show ? '' : 'none';
-            if (!show) {
-                chatHistory.innerHTML = '';
-            }
-        }
-        if (!show) {
-            chatPending = false;
-            updateSendChatState();
-            hideCourseModal();
-        }
-    }
-
-    function appendChatEntry(role, text) {
-        if (!chatHistory) return;
-        chatHistory.style.display = '';
-        const entry = document.createElement('div');
-        entry.className = 'chat-entry';
-        const name = role === 'agent' ? 'Agent' : 'You';
-        const formatted = text.replace(/\n/g, '<br>');
-        entry.innerHTML = `<strong>${name}:</strong> ${formatted}`;
-        if (chatHistory.firstChild) {
-            chatHistory.insertBefore(entry, chatHistory.firstChild);
-        } else {
-            chatHistory.appendChild(entry);
-        }
-        chatHistory.scrollTop = 0;
-    }
-
-        function safeParseJSON(text) {
-            try {
-                return JSON.parse(text);
-            } catch (error) {
-                return null;
-            }
-        }
-
-        function handleInbound(message) {
-            log(`← ${message}`, 'inbound');
-            const payload = safeParseJSON(message);
-            if (!payload) return;
-
-            if (payload.status === 'authenticated') {
-                setAuthenticatedState(true);
-                if (connectionPanel) {
-                    connectionPanel.style.display = 'none';
-                }
-                showContentPanels(true);
-                log('Authentication successful. Ready for commands.', 'system');
-                requestCourseList();
-                return;
-            }
-
-            if (payload.status === 'course_list') {
-                lastCourseList = payload.courses || [];
-                if (lastCourseList.length === 0) {
-                    log('Course list is empty.', 'system');
-                } else {
-                    const summary = lastCourseList
-                        .map(course => `${course.index}. ${course.name || 'Untitled'} (ID: ${course.id})`)
-                        .join('\n');
-                    log(`Course roster:\n${summary}`, 'system');
-                }
-                if (courseModalConfirmBtn) {
-                    courseModalConfirmBtn.disabled = true;
-                }
-                return;
-            }
-
-            if (typeof payload.answer === 'string') {
-                appendChatEntry('agent', payload.answer);
-                chatPending = false;
-                updateSendChatState();
-                chatQueryInput.focus();
-            }
-
-            if (payload.error) {
-                log(`Error: ${payload.error}`, 'error');
-                chatPending = false;
-                updateSendChatState();
-            }
-        }
-
-        function handleSocketClose(event) {
-            log(`Connection closed (code ${event.code})`, 'system');
-            socket = null;
-            lastCourseList = [];
-            setAuthenticatedState(false);
-            setConnectedState(false);
-            chatPending = false;
-            updateSendChatState();
-            hideCourseModal();
-            showContentPanels(false);
-            if (connectionPanel) {
-                connectionPanel.style.display = '';
-            }
-        }
-
-        connectBtn.addEventListener('click', () => {
-            const url = WS_ENDPOINT;
-            const password = secretInput.value.trim();
-            if (!url || !password) {
-                log('Provide WebSocket URL and password before connecting.', 'error');
-                return;
-            }
-
-            try {
-                socket = new WebSocket(url);
-            } catch (error) {
-                log(`Failed to create WebSocket: ${error}`, 'error');
-                return;
-            }
-
-            socket.addEventListener('open', () => {
-                log('Socket connection established.', 'system');
-                setConnectedState(true);
-                setAuthenticatedState(false);
-                sendAuth(password);
-            });
-
-            socket.addEventListener('message', event => {
-                handleInbound(event.data);
-            });
-
-            socket.addEventListener('close', handleSocketClose);
-            socket.addEventListener('error', event => {
-                log(`WebSocket error: ${event.message || 'Unknown error'}`, 'error');
-            });
-        });
-
-        function sendAuth(password) {
-            const payload = JSON.stringify({
-                type: 'auth',
-                password,
-                totp: '000000'
-            });
-            log(`→ ${payload}`, 'outbound');
-            socket.send(payload);
-        }
-
-        window.addEventListener('load', () => {
-            const password = secretInput.value.trim();
-            if (password) {
-                connectBtn.click();
-            } else {
-                secretInput.focus();
-            }
-            showContentPanels(false);
-        });
-
-        sendChatBtn.addEventListener('click', () => {
-            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
-                log('Not connected or authenticated.', 'error');
-                return;
-            }
-
-            const query = chatQueryInput.value.trim();
-            if (!query) {
-                log('Enter a query before sending.', 'error');
-                return;
-            }
-
-            const payload = JSON.stringify({ type: 'chat', query });
-            log(`→ ${payload}`, 'outbound');
-            socket.send(payload);
-            appendChatEntry('user', query);
-            chatQueryInput.value = '';
-            chatPending = true;
-            updateSendChatState();
-        });
-
-        function requestCourseList() {
-            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
-                log('Not connected or authenticated.', 'error');
-                return false;
-            }
-            const payload = JSON.stringify({ type: 'download' });
-            log(`→ ${payload}`, 'outbound');
-            socket.send(payload);
-            return true;
-        }
-
-        if (requestCoursesBtn) {
-            requestCoursesBtn.addEventListener('click', () => {
-                requestCourseList();
-            });
-        }
-
-        function openCourseModal() {
-            if (!courseModal || !courseListEl || !courseModalConfirmBtn) {
-                log('Course selection UI is unavailable.', 'error');
-                return;
-            }
-            if (!lastCourseList || lastCourseList.length === 0) {
-                log('Fetch the course list before selecting courses.', 'error');
-                return;
-            }
-
-            courseListEl.innerHTML = '';
-            lastCourseList.forEach(course => {
-                const li = document.createElement('li');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `course-${course.index}`;
-                checkbox.value = course.id;
-                checkbox.dataset.index = course.index;
-
-                const label = document.createElement('label');
-                label.htmlFor = checkbox.id;
-                label.className = 'course-details';
-                const title = document.createElement('span');
-                title.textContent = course.name || 'Untitled course';
-                const meta = document.createElement('small');
-                meta.textContent = `Index: ${course.index} • Canvas ID: ${course.id}`;
-                label.appendChild(title);
-                label.appendChild(meta);
-
-                li.appendChild(checkbox);
-                li.appendChild(label);
-                courseListEl.appendChild(li);
-            });
-
-            courseModalConfirmBtn.disabled = true;
-            courseModal.style.display = 'flex';
-
-            courseListEl.querySelectorAll('input[type="checkbox"]').forEach(box => {
-                box.addEventListener('change', () => {
-                    const anyChecked = courseListEl.querySelector('input[type="checkbox"]:checked');
-                    courseModalConfirmBtn.disabled = !anyChecked;
-                });
-            });
-        }
-
-        function hideCourseModal() {
-            if (courseModal) {
-                courseModal.style.display = 'none';
-            }
-            if (courseModalConfirmBtn) {
-                courseModalConfirmBtn.disabled = true;
-            }
-        }
-
-        function dispatchDownload({ course_ids, course_indices }) {
-            if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
-                log('Not connected or authenticated.', 'error');
-                return;
-            }
-
-            const payload = {
-                type: 'download',
-                auto_confirm: true
             };
 
-            if (course_ids && course_ids.length) {
-                payload.course_ids = course_ids;
-            }
-
-            if (course_indices && course_indices.length) {
-                payload.course_indices = course_indices;
-            }
-
-            if (!payload.course_ids && !payload.course_indices) {
-                log('No valid courses selected for download.', 'error');
-                return;
-            }
-
-            const serialized = JSON.stringify(payload);
-            log(`→ ${serialized}`, 'outbound');
-            socket.send(serialized);
-        }
-
-        if (selectCoursesBtn) {
-            selectCoursesBtn.addEventListener('click', () => {
-                openCourseModal();
-            });
-        }
-
-        if (courseModalCancelBtn) {
-            courseModalCancelBtn.addEventListener('click', () => {
-                hideCourseModal();
-            });
-        }
-
-        if (courseModal) {
-            courseModal.addEventListener('click', event => {
-                if (event.target === courseModal) {
-                    hideCourseModal();
-                }
-            });
-        }
-
-        if (courseModalConfirmBtn) {
-            courseModalConfirmBtn.addEventListener('click', () => {
-                if (!courseListEl) {
-                    log('Course selection UI is unavailable.', 'error');
+            /**
+             * Requests the course list from the server.
+             */
+            const requestCourseList = React.useCallback((sock) => {
+                if (!sock || sock.readyState !== WebSocket.OPEN) {
+                    log('Socket not open to request course list.', 'error');
                     return;
                 }
-                const selectedBoxes = courseListEl.querySelectorAll('input[type="checkbox"]:checked');
-                if (!selectedBoxes.length) {
-                    log('Select at least one course to download.', 'error');
+                const payload = JSON.stringify({ type: 'download' });
+                log(`→ ${payload}`, 'outbound');
+                sock.send(payload);
+            }, [log]);
+            
+            /**
+             * Handles all inbound WebSocket messages.
+             */
+            const handleInboundMessage = React.useCallback((event) => {
+                log(`← ${event.data}`, 'inbound');
+                const payload = safeParseJSON(event.data);
+                if (!payload) return;
+
+                if (payload.status === 'authenticated') {
+                    setIsAuthenticated(true);
+                    setStatus('Authenticated');
+                    log('Authentication successful. Ready for commands.', 'system');
+                    notification.success({ message: 'Authentication Successful', description: 'Ready for commands.' });
+                    // 'socket' from state might be stale here, so we use the one from connect
+                    // This function is defined inside handleConnect, so it has access to `newSocket`.
+                    // A better way is to pass socket as an arg.
+                    // Re-fetching handleConnect to pass the socket instance...
+                    
+                    // Note: This function will be redefined inside handleConnect
+                    // to close over the `newSocket` instance.
+                }
+
+                if (payload.status === 'course_list') {
+                    const courses = payload.courses || [];
+                    setCourseList(courses);
+                    if (courses.length === 0) {
+                        log('Course list is empty.', 'system');
+                    } else {
+                        const summary = courses
+                            .map(c => `${c.index}. ${c.name || 'Untitled'} (ID: ${c.id})`)
+                            .join('\n');
+                        log(`Course roster:\n${summary}`, 'system');
+                    }
+                }
+
+                if (typeof payload.answer === 'string') {
+                    setChatHistory(prev => [...prev, { role: 'agent', text: payload.answer }]);
+                    setChatPending(false);
+                }
+
+                if (payload.error) {
+                    log(`Error: ${payload.error}`, 'error');
+                    notification.error({ message: 'Server Error', description: payload.error });
+                    setChatPending(false);
+                }
+            }, [log, notification]);
+
+
+            /**
+             * Main connection handler.
+             */
+            const handleConnect = React.useCallback(() => {
+                if (!password) {
+                    message.error('Please enter the WebSocket password.');
+                    return;
+                }
+                
+                log(`Connecting to ${WS_ENDPOINT}...`, 'system');
+                setStatus('Connecting');
+                
+                try {
+                    const newSocket = new WebSocket(WS_ENDPOINT);
+
+                    newSocket.onopen = () => {
+                        log('Socket connection established.', 'system');
+                        setStatus('Authenticating');
+                        
+                        // Send auth
+                        const payload = JSON.stringify({
+                            type: 'auth',
+                            password,
+                            totp: '000000'
+                        });
+                        log(`→ ${payload}`, 'outbound');
+                        newSocket.send(payload);
+                    };
+
+                    // Redefine handleInboundMessage to close over newSocket
+                    const handleInbound = (event) => {
+                        log(`← ${event.data}`, 'inbound');
+                        const payload = safeParseJSON(event.data);
+                        if (!payload) return;
+
+                        if (payload.status === 'authenticated') {
+                            setIsAuthenticated(true);
+                            setStatus('Authenticated');
+                            log('Authentication successful. Ready for commands.', 'system');
+                            notification.success({ message: 'Authentication Successful', description: 'Ready for commands.' });
+                            requestCourseList(newSocket); // Use the newSocket instance
+                        }
+
+                        if (payload.status === 'course_list') {
+                            const courses = payload.courses || [];
+                            setCourseList(courses);
+                            if (courses.length === 0) {
+                                log('Course list is empty.', 'system');
+                            } else {
+                                const summary = courses
+                                    .map(c => `${c.index}. ${c.name || 'Untitled'} (ID: ${c.id})`)
+                                    .join('\n');
+                                log(`Course roster:\n${summary}`, 'system');
+                            }
+                        }
+
+                        if (typeof payload.answer === 'string') {
+                            setChatHistory(prev => [...prev, { role: 'agent', text: payload.answer }]);
+                            setChatPending(false);
+                        }
+
+                        if (payload.error) {
+                            log(`Error: ${payload.error}`, 'error');
+                            notification.error({ message: 'Server Error', description: payload.error });
+                            setChatPending(false);
+                        }
+                    };
+                    
+                    newSocket.onmessage = handleInbound;
+
+                    newSocket.onclose = (event) => {
+                        log(`Connection closed (code ${event.code})`, 'system');
+                        setSocket(null);
+                        setIsAuthenticated(false);
+                        setStatus('Disconnected');
+                        setChatPending(false);
+                        setCourseList([]);
+                    };
+
+                    newSocket.onerror = (event) => {
+                        log(`WebSocket error: ${event.message || 'Unknown error'}`, 'error');
+                        setStatus('Error');
+                        notification.error({ message: 'WebSocket Error', description: 'Check logs for details.'});
+                    };
+                    
+                    setSocket(newSocket);
+
+                } catch (error) {
+                    log(`Failed to create WebSocket: ${error}`, 'error');
+                    setStatus('Error');
+                    notification.error({ message: 'Connection Failed', description: error.message });
+                }
+            }, [password, log, notification, requestCourseList]);
+
+            /**
+             * Clean up socket connection on unmount.
+             */
+            React.useEffect(() => {
+                return () => {
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        log('Closing socket connection.', 'system');
+                        socket.close(1000, 'Component unmounting');
+                    }
+                };
+            }, [socket, log]);
+
+
+            // --- UI Event Handlers ---
+
+            const handleSendChat = () => {
+                if (!chatQuery.trim()) {
+                    message.warning('Please enter a query.');
+                    return;
+                }
+                if (!canChat) {
+                    message.error('Not connected or authenticated.');
                     return;
                 }
 
-                const courseIds = [];
-                const courseIndices = [];
-                selectedBoxes.forEach(box => {
-                    const id = parseInt(box.value, 10);
-                    const index = parseInt(box.dataset.index, 10);
-                    if (!Number.isNaN(id)) {
-                        courseIds.push(id);
-                    }
-                    if (!Number.isNaN(index)) {
-                        courseIndices.push(index);
-                    }
+                const payload = JSON.stringify({ type: 'chat', query: chatQuery });
+                log(`→ ${payload}`, 'outbound');
+                socket.send(payload);
+                
+                setChatHistory(prev => [...prev, { role: 'user', text: chatQuery }]);
+                setChatQuery('');
+                setChatPending(true);
+            };
+
+            const handleSelectCourses = () => {
+                if (courseList.length === 0) {
+                    message.info('Course list is empty or not yet loaded.');
+                    return;
+                }
+                setSelectedCourseIds([]);
+                setIsModalVisible(true);
+            };
+            
+            const handleModalOk = () => {
+                if (selectedCourseIds.length === 0) {
+                    message.warning('Please select at least one course.');
+                    return;
+                }
+
+                // Find the full course objects from the IDs
+                const selectedCourses = courseList.filter(c => selectedCourseIds.includes(c.id));
+                const course_ids = selectedCourses.map(c => c.id);
+                const course_indices = selectedCourses.map(c => c.index);
+
+                const payload = JSON.stringify({
+                    type: 'download',
+                    auto_confirm: true,
+                    course_ids,
+                    course_indices
                 });
 
-                if (!courseIds.length && !courseIndices.length) {
-                    log('Could not parse selected courses.', 'error');
-                    return;
-                }
+                log(`→ ${payload}`, 'outbound');
+                socket.send(payload);
+                notification.info({ 
+                    message: 'Download Started', 
+                    description: `Requested download for ${selectedCourseIds.length} course(s).` 
+                });
 
-                dispatchDownload({ course_ids: courseIds, course_indices: courseIndices });
-                hideCourseModal();
-            });
+                setIsModalVisible(false);
+                setSelectedCourseIds([]);
+            };
+            
+            const handleModalCancel = () => {
+                setIsModalVisible(false);
+            };
+            
+            const onCheckboxGroupChange = (checkedValues) => {
+                setSelectedCourseIds(checkedValues);
+            };
+
+            // --- Log & Chat Renderers ---
+            
+            const renderStatusTag = () => {
+                let color = 'default';
+                switch (status) {
+                    case 'Authenticated': color = 'success'; break;
+                    case 'Connecting':
+                    case 'Authenticating':
+                        color = 'processing'; break;
+                    case 'Connected': color = 'blue'; break;
+                    case 'Error': color = 'error'; break;
+                    case 'Disconnected': color = 'default'; break;
+                }
+                return <Tag color={color} className="text-sm">{status}</Tag>;
+            };
+            
+            const renderLogEntry = (entry) => {
+                let color;
+                switch (entry.type) {
+                    case 'system': color = 'text-blue-500'; break;
+                    case 'inbound': color = 'text-green-500'; break;
+                    case 'outbound': color = 'text-purple-500'; break;
+                    case 'error': color = 'text-red-500'; break;
+                    default: color = 'text-gray-500';
+                }
+                return (
+                    <div key={`${entry.time}-${entry.message.slice(0, 10)}`} className={`font-mono text-xs ${color} whitespace-pre-wrap`}>
+                        <span className="text-gray-400 dark:text-gray-600 mr-2">[{entry.time}]</span>
+                        {entry.message}
+                    </div>
+                );
+            };
+            
+            const renderChatEntry = (entry, index) => (
+                <div key={index} className="mb-3">
+                    <Text strong>{entry.role === 'agent' ? 'Agent' : 'You'}</Text>
+                    <Paragraph className="!mb-0 p-2 bg-gray-100 dark:bg-gray-800 rounded-md whitespace-pre-wrap">
+                        {entry.text}
+                    </Paragraph>
+                </div>
+            );
+            
+            // --- Modal Course Options ---
+            const courseOptions = courseList.map(course => ({
+                label: (
+                    <div className="flex flex-col">
+                        <span className="font-medium">{course.name || 'Untitled course'}</span>
+                        <small className="text-gray-500">Index: {course.index} • ID: {course.id}</small>
+                    </div>
+                ),
+                value: course.id,
+            }));
+
+            // --- Component Render ---
+            return (
+                <Layout className="min-h-full">
+                    <Header className="flex items-center">
+                        <Title level={2} className="!text-white !mb-0">Canvas AI Client</Title>
+                    </Header>
+                    <Content className="p-4 md:p-8">
+                        <div className="max-w-4xl mx-auto">
+                            <Space direction="vertical" size="large" className="w-full">
+                                
+                                {/* Connection Panel */}
+                                {!isAuthenticated && (
+                                    <Card title="Connection">
+                                        <Form onFinish={handleConnect}>
+                                            <Form.Item
+                                                label="Password"
+                                                name="password"
+                                                rules={[{ required: true, message: 'Password is required' }]}
+                                            >
+                                                <Input.Password 
+                                                    placeholder="CANVAS_WS_SECRET"
+                                                    value={password}
+                                                    onChange={e => setPassword(e.target.value)}
+                                                />
+                                            </Form.Item>
+                                            <Space className="flex justify-between items-center w-full">
+                                                <Button 
+                                                    type="primary" 
+                                                    htmlType="submit" 
+                                                    loading={status === 'Connecting' || status === 'Authenticating'}
+                                                    disabled={isConnected}
+                                                >
+                                                    {isConnected ? 'Connected' : 'Connect & Authenticate'}
+                                                </Button>
+                                                {renderStatusTag()}
+                                            </Space>
+                                        </Form>
+                                    </Card>
+                                )}
+                                
+                                {/* Chat Panel */}
+                                {isAuthenticated && (
+                                    <Card title="Chat">
+                                        <Spin spinning={chatPending} tip="Waiting for response...">
+                                            <Form onFinish={handleSendChat}>
+                                                <Form.Item>
+                                                    <Input.TextArea
+                                                        rows={4}
+                                                        placeholder="e.g. List my Canvas courses"
+                                                        value={chatQuery}
+                                                        onChange={e => setChatQuery(e.target.value)}
+                                                        disabled={!canChat}
+                                                    />
+                                                </Form.Item>
+                                                <Space>
+                                                    <Button type="primary" htmlType="submit" disabled={!canChat}>
+                                                        Send Chat
+                                                    </Button>
+                                                    <Button onClick={handleSelectCourses} disabled={!canChat}>
+                                                        Select Courses for Download
+                                                    </Button>
+                                                </Space>
+                                            </Form>
+                                        </Spin>
+                                        
+                                        {/* Chat History */}
+                                        {chatHistory.length > 0 && (
+                                            <div className="mt-6 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md max-h-96 overflow-y-auto">
+                                                {chatHistory.map(renderChatEntry)}
+                                                <div ref={chatHistoryEndRef} />
+                                            </div>
+                                        )}
+                                    </Card>
+                                )}
+
+                                {/* Log Panel */}
+                                {isAuthenticated && (
+                                    <Card title="Event Log">
+                                        <Collapse ghost>
+                                            <Panel header="View Logs" key="1">
+                                                <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-md max-h-80 overflow-y-auto">
+                                                    {logEntries.map(renderLogEntry)}
+                                                    <div ref={logEndRef} />
+                                                </div>
+                                            </Panel>
+                                        </Collapse>
+                                    </Card>
+                                )}
+
+                            </Space>
+                        </div>
+                    </Content>
+                    
+                    {/* Course Selection Modal */}
+                    <Modal
+                        title="Select Courses to Download"
+                        open={isModalVisible}
+                        onOk={handleModalOk}
+                        onCancel={handleModalCancel}
+                        confirmLoading={!canChat} // Reuse loading state
+                        okButtonProps={{ disabled: selectedCourseIds.length === 0 }}
+                    >
+                        <div className="max-h-80 overflow-y-auto py-2">
+                            <Checkbox.Group
+                                options={courseOptions}
+                                value={selectedCourseIds}
+                                onChange={onCheckboxGroupChange}
+                                className="w-full"
+                            >
+                                <Space direction="vertical" className="w-full">
+                                    {courseOptions.map(opt => (
+                                        <Checkbox key={opt.value} value={opt.value} className="!ml-0 p-2 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-md w-full">
+                                            {opt.label}
+                                        </Checkbox>
+                                    ))}
+                                </Space>
+                            </Checkbox.Group>
+                        </div>
+                    </Modal>
+                </Layout>
+            );
+        }
+        
+        // --- Theme and App Wrapper ---
+        
+        const { darkAlgorithm, defaultAlgorithm } = theme;
+
+        function ThemeWrapper() {
+            // Detect user's preferred color scheme
+            const [isDarkMode, setIsDarkMode] = React.useState(
+                window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            );
+
+            React.useEffect(() => {
+                const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                const handleChange = (e) => setIsDarkMode(e.matches);
+                
+                mediaQuery.addEventListener('change', handleChange);
+                return () => mediaQuery.removeEventListener('change', handleChange);
+            }, []);
+
+            return (
+                <ConfigProvider 
+                    theme={{
+                        algorithm: isDarkMode ? darkAlgorithm : defaultAlgorithm,
+                    }}
+                >
+                    {/* AntApp provides context for message/notification */}
+                    <AntApp>
+                        <App />
+                    </AntApp>
+                </ConfigProvider>
+            );
         }
 
-        if (startDownloadBtn) {
-            startDownloadBtn.addEventListener('click', () => {
-                if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
-                    log('Not connected or authenticated.', 'error');
-                    return;
-                }
-
-                const idsText = courseIdsInput ? courseIdsInput.value.trim() : '';
-                const indicesText = courseIndicesInput ? courseIndicesInput.value.trim() : '';
-                const courseIds = idsText
-                    ? idsText.split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v))
-                    : [];
-                const courseIndices = indicesText
-                    ? indicesText.split(',').map(v => parseInt(v.trim(), 10)).filter(v => !Number.isNaN(v))
-                    : [];
-
-                if (!courseIds.length && !courseIndices.length) {
-                    log('Provide course IDs or indices before starting the download.', 'error');
-                    return;
-                }
-
-                dispatchDownload({ course_ids: courseIds, course_indices: courseIndices });
-            });
-        }
-
-        window.addEventListener('beforeunload', () => {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.close(1000, 'Page closing');
-            }
-        });
+        // --- Mount the Application ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ThemeWrapper />);
     </script>
 </body>
 </html>
