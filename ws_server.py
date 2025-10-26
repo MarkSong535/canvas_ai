@@ -6,7 +6,9 @@ import asyncio
 from copy import deepcopy
 import json
 import os
+import secrets
 import ssl
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
@@ -39,6 +41,21 @@ WSS_ENABLED = os.getenv("WSS_ENABLED", "false").strip().lower() in {
 }
 WSS_CERTFILE = os.getenv("WSS_CERTFILE")
 WSS_KEYFILE = os.getenv("WSS_KEYFILE")
+
+
+def _parse_session_ttl(raw: Optional[str]) -> int:
+    if raw is None:
+        return 3600
+    try:
+        ttl = int(raw)
+    except (TypeError, ValueError):
+        return 3600
+    return max(ttl, 0)
+
+
+SESSION_TTL_SECONDS = _parse_session_ttl(os.getenv("CANVAS_WS_SESSION_TTL"))
+SESSION_STORE: Dict[str, Dict[str, Any]] = {}
+SESSION_LOCK = asyncio.Lock()
 
 
 async def build_agent() -> Any:
@@ -252,39 +269,130 @@ def authenticate_payload(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
+async def prune_sessions(now: Optional[float] = None) -> None:
+    """Remove expired sessions from the session store."""
+    if SESSION_TTL_SECONDS <= 0:
+        return
+
+    current = now or time.time()
+    async with SESSION_LOCK:
+        expired = [
+            key
+            for key, session in SESSION_STORE.items()
+            if current - session.get("last_seen", current) > SESSION_TTL_SECONDS
+        ]
+        for key in expired:
+            SESSION_STORE.pop(key, None)
+
+
+async def create_session() -> Tuple[str, Dict[str, Any]]:
+    """Create a new reusable session and return its key and data."""
+    await prune_sessions()
+    session_key = secrets.token_urlsafe(32)
+    now = time.time()
+    session_data: Dict[str, Any] = {
+        "created": now,
+        "last_seen": now,
+        "pending_courses": None,
+    }
+
+    async with SESSION_LOCK:
+        SESSION_STORE[session_key] = session_data
+
+    return session_key, session_data
+
+
+async def get_session(session_key: str) -> Optional[Dict[str, Any]]:
+    """Retrieve an existing session if it is still valid."""
+    await prune_sessions()
+    async with SESSION_LOCK:
+        session = SESSION_STORE.get(session_key)
+        if session is None:
+            return None
+        session["last_seen"] = time.time()
+        return session
+
+
+async def update_session(session_key: str, session_data: Dict[str, Any]) -> None:
+    """Persist updated session data back into the store."""
+    session_data["last_seen"] = time.time()
+    async with SESSION_LOCK:
+        if session_key in SESSION_STORE:
+            SESSION_STORE[session_key] = session_data
+
+
 async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
     """Handle a single WebSocket connection."""
     authenticated = False
     pending_courses: Optional[List[Dict[str, Any]]] = None
+    session_key: Optional[str] = None
+    session_data: Optional[Dict[str, Any]] = None
 
-    async for raw_message in websocket:
-        try:
-            payload = json.loads(raw_message)
-        except json.JSONDecodeError:
-            await websocket.send(json.dumps({"error": "Invalid JSON payload."}))
-            continue
+    try:
+        async for raw_message in websocket:
+            try:
+                payload = json.loads(raw_message)
+            except json.JSONDecodeError:
+                await websocket.send(json.dumps({"error": "Invalid JSON payload."}))
+                continue
 
-        if not authenticated:
-            if payload.get("type") != "auth":
-                await websocket.send(json.dumps({"error": "Authentication required."}))
-                break
+            if not authenticated:
+                if payload.get("type") != "auth":
+                    await websocket.send(json.dumps({"error": "Authentication required."}))
+                    break
 
-            is_valid, error = authenticate_payload(payload)
-            if not is_valid:
-                await websocket.send(json.dumps({"error": error}))
-                break
+                requested_session_key_raw = payload.get("session_key")
+                requested_session_key = (
+                    requested_session_key_raw.strip()
+                    if isinstance(requested_session_key_raw, str)
+                    else None
+                )
 
-            authenticated = True
-            await websocket.send(json.dumps({"status": "authenticated"}))
-            continue
+                if requested_session_key:
+                    existing_session = await get_session(requested_session_key)
+                    if existing_session is None:
+                        await websocket.send(json.dumps({"error": "Invalid or expired session_key."}))
+                        break
 
-        try:
-            response, pending_courses = await handle_message(payload, pending_courses)
-        except Exception as exc:
-            pending_courses = None
-            response = {"error": str(exc)}
+                    authenticated = True
+                    session_key = requested_session_key
+                    session_data = existing_session
+                    pending_courses = session_data.get("pending_courses")
+                    response = {"status": "authenticated", "session_key": session_key}
+                    if SESSION_TTL_SECONDS > 0:
+                        response["expires_in"] = SESSION_TTL_SECONDS
+                    await websocket.send(json.dumps(response))
+                    continue
 
-        await websocket.send(json.dumps(response))
+                is_valid, error = authenticate_payload(payload)
+                if not is_valid:
+                    await websocket.send(json.dumps({"error": error}))
+                    break
+
+                session_key, session_data = await create_session()
+                authenticated = True
+                pending_courses = session_data.get("pending_courses")
+                response = {"status": "authenticated", "session_key": session_key}
+                if SESSION_TTL_SECONDS > 0:
+                    response["expires_in"] = SESSION_TTL_SECONDS
+                await websocket.send(json.dumps(response))
+                continue
+
+            try:
+                response, pending_courses = await handle_message(payload, pending_courses)
+            except Exception as exc:
+                pending_courses = None
+                response = {"error": str(exc)}
+
+            await websocket.send(json.dumps(response))
+
+            if session_key and session_data is not None:
+                session_data["pending_courses"] = pending_courses
+                await update_session(session_key, session_data)
+    finally:
+        if session_key and session_data is not None:
+            session_data["pending_courses"] = pending_courses
+            await update_session(session_key, session_data)
 
 
 async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:

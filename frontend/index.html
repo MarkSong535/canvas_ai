@@ -65,14 +65,59 @@
         const { Panel } = Collapse;
 
         const WS_ENDPOINT = 'wss://canvas.marksong.tech:8765';
+        const SESSION_STORAGE_KEY = 'canvasWsSession';
+
+        function readStoredSession() {
+            if (typeof window === 'undefined' || !window.localStorage) {
+                return { key: '', expiry: null };
+            }
+            try {
+                const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+                if (!raw) {
+                    return { key: '', expiry: null };
+                }
+                const parsed = JSON.parse(raw);
+                const key = typeof parsed?.key === 'string' ? parsed.key : '';
+                const expiry = typeof parsed?.expiry === 'number' ? parsed.expiry : null;
+                if (expiry && expiry <= Date.now()) {
+                    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+                    return { key: '', expiry: null };
+                }
+                return { key, expiry };
+            } catch (error) {
+                console.warn('Failed to read stored session key', error);
+                return { key: '', expiry: null };
+            }
+        }
+
+        function persistSession(key, expiry) {
+            if (typeof window === 'undefined' || !window.localStorage) {
+                return;
+            }
+            try {
+                if (key) {
+                    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ key, expiry }));
+                } else {
+                    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+                }
+            } catch (error) {
+                console.warn('Failed to persist session key', error);
+            }
+        }
 
         // Main React Application Component
         function App() {
             // Use AntApp's context for message/notification
             const { message, notification } = AntApp.useApp();
 
+            // --- Session bootstrap ---
+            const sessionBootstrap = React.useMemo(() => readStoredSession(), []);
+
             // --- State Management ---
+            const [sessionKey, setSessionKey] = React.useState(sessionBootstrap.key);
+            const [sessionExpiry, setSessionExpiry] = React.useState(sessionBootstrap.expiry);
             const [password, setPassword] = React.useState('');
+            const [totp, setTotp] = React.useState('');
             const [socket, setSocket] = React.useState(null);
             
             // 'Disconnected', 'Connecting', 'Connected', 'Authenticating', 'Authenticated', 'Error'
@@ -91,9 +136,57 @@
             const logEndRef = React.useRef(null);
             const chatHistoryEndRef = React.useRef(null);
 
+            React.useEffect(() => {
+                persistSession(sessionKey, sessionExpiry);
+            }, [sessionKey, sessionExpiry]);
+
+            React.useEffect(() => {
+                if (!sessionExpiry) {
+                    return;
+                }
+                if (typeof window === 'undefined') {
+                    return;
+                }
+                const remaining = sessionExpiry - Date.now();
+                if (remaining <= 0) {
+                    if (sessionKey) {
+                        setSessionKey('');
+                        setSessionExpiry(null);
+                        log('Stored session key expired.', 'system');
+                        message.info('Stored session key expired. Please authenticate again.');
+                    }
+                    return;
+                }
+                const timer = window.setTimeout(() => {
+                    if (sessionKey) {
+                        setSessionKey('');
+                        setSessionExpiry(null);
+                        log('Stored session key expired.', 'system');
+                        message.info('Stored session key expired. Please authenticate again.');
+                    }
+                }, remaining);
+                return () => window.clearTimeout(timer);
+            }, [sessionExpiry, sessionKey, log, message]);
+
             // --- Computed State ---
             const isConnected = socket && socket.readyState === WebSocket.OPEN;
+            const trimmedPassword = password.trim();
+            const trimmedTotp = totp.trim();
+            const sessionKeyValid = Boolean(sessionKey && (!sessionExpiry || sessionExpiry > Date.now()));
+            const canAttemptConnection = Boolean(trimmedPassword || sessionKeyValid);
             const canChat = isConnected && isAuthenticated && !chatPending;
+            const sessionExpiryLabel = React.useMemo(() => {
+                if (!sessionKey) {
+                    return 'A session key will be stored after successful authentication.';
+                }
+                if (!sessionExpiry) {
+                    return 'Session key active; server did not provide an expiry.';
+                }
+                if (sessionExpiry <= Date.now()) {
+                    return 'Stored session key has expired. Authenticate with password to obtain a new one.';
+                }
+                return `Session key expires ${new Date(sessionExpiry).toLocaleString()}.`;
+            }, [sessionKey, sessionExpiry]);
 
             // --- Utility Functions ---
             
@@ -145,96 +238,94 @@
                 log(`→ ${payload}`, 'outbound');
                 sock.send(payload);
             }, [log]);
-            
-            /**
-             * Handles all inbound WebSocket messages.
-             */
-            const handleInboundMessage = React.useCallback((event) => {
-                log(`← ${event.data}`, 'inbound');
-                const payload = safeParseJSON(event.data);
-                if (!payload) return;
 
-                if (payload.status === 'authenticated') {
-                    setIsAuthenticated(true);
-                    setStatus('Authenticated');
-                    log('Authentication successful. Ready for commands.', 'system');
-                    notification.success({ message: 'Authentication Successful', description: 'Ready for commands.' });
-                    // 'socket' from state might be stale here, so we use the one from connect
-                    // This function is defined inside handleConnect, so it has access to `newSocket`.
-                    // A better way is to pass socket as an arg.
-                    // Re-fetching handleConnect to pass the socket instance...
-                    
-                    // Note: This function will be redefined inside handleConnect
-                    // to close over the `newSocket` instance.
+            const handleAuthentication = React.useCallback((payload, activeSocket) => {
+                setIsAuthenticated(true);
+                setStatus('Authenticated');
+                setPassword('');
+                setTotp('');
+
+                const newSessionKey = typeof payload.session_key === 'string' ? payload.session_key : '';
+                if (newSessionKey) {
+                    if (newSessionKey !== sessionKey) {
+                        log('Received new session key from server. Stored for reuse.', 'system');
+                    } else {
+                        log('Session key refreshed.', 'system');
+                    }
+                    setSessionKey(newSessionKey);
                 }
 
-                if (payload.status === 'course_list') {
-                    const courses = payload.courses || [];
-                    setCourseList(courses);
-                    if (courses.length === 0) {
-                        log('Course list is empty.', 'system');
+                if (payload.expires_in !== undefined) {
+                    const expiresIn = Number(payload.expires_in);
+                    if (Number.isFinite(expiresIn) && expiresIn > 0) {
+                        setSessionExpiry(Date.now() + expiresIn * 1000);
                     } else {
-                        const summary = courses
-                            .map(c => `${c.index}. ${c.name || 'Untitled'} (ID: ${c.id})`)
-                            .join('\n');
-                        log(`Course roster:\n${summary}`, 'system');
+                        setSessionExpiry(null);
                     }
                 }
 
-                if (typeof payload.answer === 'string') {
-                    setChatHistory(prev => [...prev, { role: 'agent', text: payload.answer }]);
-                    setChatPending(false);
+                log('Authentication successful. Ready for commands.', 'system');
+                notification.success({ message: 'Authentication Successful', description: 'Ready for commands.' });
+
+                if (activeSocket) {
+                    requestCourseList(activeSocket);
                 }
-
-                if (payload.error) {
-                    log(`Error: ${payload.error}`, 'error');
-                    notification.error({ message: 'Server Error', description: payload.error });
-                    setChatPending(false);
-                }
-            }, [log, notification]);
-
-
+            }, [log, notification, requestCourseList, sessionKey, setTotp]);
+            
             /**
              * Main connection handler.
              */
             const handleConnect = React.useCallback(() => {
-                if (!password) {
-                    message.error('Please enter the WebSocket password.');
+                const trimmed = trimmedPassword;
+                const usingSession = !trimmed && sessionKeyValid;
+                const sessionKeyExpired = !trimmed && Boolean(sessionKey) && !sessionKeyValid;
+
+                if (!trimmed && !usingSession) {
+                    if (sessionKeyExpired) {
+                        message.warning('Stored session key has expired. Authenticate with your password to obtain a new one.');
+                    } else {
+                        message.error('Enter the WebSocket password or use an existing session key.');
+                    }
                     return;
                 }
-                
+
                 log(`Connecting to ${WS_ENDPOINT}...`, 'system');
                 setStatus('Connecting');
-                
+
                 try {
                     const newSocket = new WebSocket(WS_ENDPOINT);
 
                     newSocket.onopen = () => {
                         log('Socket connection established.', 'system');
                         setStatus('Authenticating');
-                        
-                        // Send auth
-                        const payload = JSON.stringify({
-                            type: 'auth',
-                            password,
-                            totp: '000000'
-                        });
+
+                        const payloadObject = usingSession
+                            ? { type: 'auth', session_key: sessionKey }
+                            : { type: 'auth', password: trimmed };
+
+                        if (!usingSession && trimmedTotp) {
+                            payloadObject.totp = trimmedTotp;
+                        }
+
+                        if (usingSession) {
+                            log('Authenticating with stored session key.', 'system');
+                        } else {
+                            log(trimmedTotp ? 'Authenticating with password and provided TOTP.' : 'Authenticating with password (no TOTP provided).', 'system');
+                        }
+
+                        const payload = JSON.stringify(payloadObject);
                         log(`→ ${payload}`, 'outbound');
                         newSocket.send(payload);
                     };
 
-                    // Redefine handleInboundMessage to close over newSocket
                     const handleInbound = (event) => {
                         log(`← ${event.data}`, 'inbound');
                         const payload = safeParseJSON(event.data);
                         if (!payload) return;
 
                         if (payload.status === 'authenticated') {
-                            setIsAuthenticated(true);
-                            setStatus('Authenticated');
-                            log('Authentication successful. Ready for commands.', 'system');
-                            notification.success({ message: 'Authentication Successful', description: 'Ready for commands.' });
-                            requestCourseList(newSocket); // Use the newSocket instance
+                            handleAuthentication(payload, newSocket);
+                            return;
                         }
 
                         if (payload.status === 'course_list') {
@@ -248,20 +339,27 @@
                                     .join('\n');
                                 log(`Course roster:\n${summary}`, 'system');
                             }
+                            return;
                         }
 
                         if (typeof payload.answer === 'string') {
                             setChatHistory(prev => [...prev, { role: 'agent', text: payload.answer }]);
                             setChatPending(false);
+                            return;
                         }
 
                         if (payload.error) {
                             log(`Error: ${payload.error}`, 'error');
+                            if (typeof payload.error === 'string' && payload.error.toLowerCase().includes('session_key')) {
+                                setSessionKey('');
+                                setSessionExpiry(null);
+                                message.info('Stored session key is no longer valid. Please authenticate with your password.');
+                            }
                             notification.error({ message: 'Server Error', description: payload.error });
                             setChatPending(false);
                         }
                     };
-                    
+
                     newSocket.onmessage = handleInbound;
 
                     newSocket.onclose = (event) => {
@@ -278,7 +376,7 @@
                         setStatus('Error');
                         notification.error({ message: 'WebSocket Error', description: 'Check logs for details.'});
                     };
-                    
+
                     setSocket(newSocket);
 
                 } catch (error) {
@@ -286,7 +384,7 @@
                     setStatus('Error');
                     notification.error({ message: 'Connection Failed', description: error.message });
                 }
-            }, [password, log, notification, requestCourseList]);
+            }, [trimmedPassword, trimmedTotp, sessionKey, sessionKeyValid, log, message, notification, handleAuthentication, safeParseJSON]);
 
             /**
              * Clean up socket connection on unmount.
@@ -368,6 +466,34 @@
                 setSelectedCourseIds(checkedValues);
             };
 
+            const handleCopySessionKey = React.useCallback(() => {
+                if (!sessionKey) {
+                    message.info('No stored session key to copy.');
+                    return;
+                }
+                if (!navigator.clipboard) {
+                    message.error('Clipboard API is not available in this browser.');
+                    return;
+                }
+                navigator.clipboard.writeText(sessionKey)
+                    .then(() => message.success('Session key copied to clipboard.'))
+                    .catch(error => {
+                        log(`Clipboard error: ${error}`, 'error');
+                        message.error('Failed to copy session key.');
+                    });
+            }, [sessionKey, message, log]);
+
+            const handleForgetSessionKey = React.useCallback(() => {
+                if (!sessionKey) {
+                    message.info('No stored session key to clear.');
+                    return;
+                }
+                setSessionKey('');
+                setSessionExpiry(null);
+                message.success('Stored session key cleared.');
+                log('Stored session key cleared by user.', 'system');
+            }, [sessionKey, message, log]);
+
             // --- Log & Chat Renderers ---
             
             const renderStatusTag = () => {
@@ -434,11 +560,11 @@
                                 {/* Connection Panel */}
                                 {!isAuthenticated && (
                                     <Card title="Connection">
-                                        <Form onFinish={handleConnect}>
+                                        <Form onFinish={handleConnect} layout="vertical">
                                             <Form.Item
                                                 label="Password"
                                                 name="password"
-                                                rules={[{ required: true, message: 'Password is required' }]}
+                                                extra="Provide your Canvas WebSocket password to create a new session key."
                                             >
                                                 <Input.Password 
                                                     placeholder="CANVAS_WS_SECRET"
@@ -446,12 +572,43 @@
                                                     onChange={e => setPassword(e.target.value)}
                                                 />
                                             </Form.Item>
+                                            <Form.Item
+                                                label="TOTP Code"
+                                                name="totp"
+                                                extra="Enter your 6-digit authenticator code when required."
+                                            >
+                                                <Input
+                                                    placeholder="123456"
+                                                    value={totp}
+                                                    onChange={e => setTotp(e.target.value.replace(/\D/g, ''))}
+                                                    maxLength={6}
+                                                    inputMode="numeric"
+                                                />
+                                            </Form.Item>
+                                            <Form.Item label="Stored Session Key">
+                                                <Space direction="vertical" className="w-full">
+                                                    <Input
+                                                        value={sessionKey}
+                                                        readOnly
+                                                        placeholder="No session key stored yet."
+                                                    />
+                                                    <Space>
+                                                        <Button onClick={handleCopySessionKey} disabled={!sessionKey}>
+                                                            Copy Session Key
+                                                        </Button>
+                                                        <Button danger onClick={handleForgetSessionKey} disabled={!sessionKey}>
+                                                            Forget Session Key
+                                                        </Button>
+                                                    </Space>
+                                                    <Text type="secondary">{sessionExpiryLabel}</Text>
+                                                </Space>
+                                            </Form.Item>
                                             <Space className="flex justify-between items-center w-full">
                                                 <Button 
                                                     type="primary" 
                                                     htmlType="submit" 
                                                     loading={status === 'Connecting' || status === 'Authenticating'}
-                                                    disabled={isConnected}
+                                                    disabled={isConnected || !canAttemptConnection}
                                                 >
                                                     {isConnected ? 'Connected' : 'Connect & Authenticate'}
                                                 </Button>
