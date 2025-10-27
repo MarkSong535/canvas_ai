@@ -7,7 +7,7 @@ Defines an agent tailored for student access to Canvas LMS with the complete Can
 from src.tools.canvas_tools import (
     CanvasListCourses,
     CanvasGetAssignments,
-    CanvasSubmitAssignment,
+    # CanvasSubmitAssignment,
     CanvasGetModules,
     CanvasGetModuleItems,
     CanvasGetFiles,
@@ -16,7 +16,7 @@ from src.tools.canvas_tools import (
     CanvasGetFolderFiles,
     CanvasSearchFiles,
     CanvasGetDiscussions,
-    CanvasPostDiscussion,
+    # CanvasPostDiscussion,
     CanvasGetAnnouncements,
     CanvasGetCalendarEvents,
     CanvasGetGrades,
@@ -37,7 +37,7 @@ canvas_student_agent_config = dict(
     type="general_agent",
     name="canvas_student_agent",
     description="Canvas LMS study assistant that helps manage courses, assignments, discussions, and more",
-    model_id="gpt-5",
+    model_id="gpt-4o",
     max_steps=15,
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt template path
     
@@ -45,7 +45,7 @@ canvas_student_agent_config = dict(
     tools=[
         CanvasListCourses(),              # List enrolled courses
         CanvasGetAssignments(),           # Retrieve assignments
-        CanvasSubmitAssignment(),         # Submit an assignment
+        # CanvasSubmitAssignment(),         # Submit an assignment
         CanvasGetModules(),               # Retrieve course modules
         CanvasGetModuleItems(),           # Retrieve module items
         CanvasGetFiles(),                 # List course files
@@ -54,7 +54,7 @@ canvas_student_agent_config = dict(
         CanvasGetFolderFiles(),           # List files inside a folder
         CanvasSearchFiles(),              # Search files by keyword
         CanvasGetDiscussions(),           # Retrieve discussions
-        CanvasPostDiscussion(),           # Post a discussion reply
+        # CanvasPostDiscussion(),           # Post a discussion reply
         CanvasGetAnnouncements(),         # Retrieve announcements
         CanvasGetCalendarEvents(),        # Retrieve calendar events
         CanvasGetGrades(),                # Retrieve grades

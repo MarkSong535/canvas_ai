@@ -57,6 +57,10 @@ SESSION_TTL_SECONDS = _parse_session_ttl(os.getenv("CANVAS_WS_SESSION_TTL"))
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
 SESSION_LOCK = asyncio.Lock()
 
+# Track the single active WebSocket connection
+ACTIVE_WEBSOCKET: Optional[WebSocketServerProtocol] = None
+ACTIVE_WEBSOCKET_LOCK = asyncio.Lock()
+
 
 async def build_agent() -> Any:
     """Create and cache the Canvas agent instance."""
@@ -323,10 +327,16 @@ async def update_session(session_key: str, session_data: Dict[str, Any]) -> None
 
 async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
     """Handle a single WebSocket connection."""
-    authenticated = False
+    global ACTIVE_WEBSOCKET
+    
     pending_courses: Optional[List[Dict[str, Any]]] = None
-    session_key: Optional[str] = None
-    session_data: Optional[Dict[str, Any]] = None
+
+    # Reject new connection if one is already active
+    async with ACTIVE_WEBSOCKET_LOCK:
+        if ACTIVE_WEBSOCKET is not None and ACTIVE_WEBSOCKET != websocket:
+            await websocket.send(json.dumps({"error": "A connection is already active. Only one connection permitted at a time."}))
+            return
+        ACTIVE_WEBSOCKET = websocket
 
     try:
         async for raw_message in websocket:
@@ -336,48 +346,6 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
                 await websocket.send(json.dumps({"error": "Invalid JSON payload."}))
                 continue
 
-            if not authenticated:
-                if payload.get("type") != "auth":
-                    await websocket.send(json.dumps({"error": "Authentication required."}))
-                    break
-
-                requested_session_key_raw = payload.get("session_key")
-                requested_session_key = (
-                    requested_session_key_raw.strip()
-                    if isinstance(requested_session_key_raw, str)
-                    else None
-                )
-
-                if requested_session_key:
-                    existing_session = await get_session(requested_session_key)
-                    if existing_session is None:
-                        await websocket.send(json.dumps({"error": "Invalid or expired session_key."}))
-                        break
-
-                    authenticated = True
-                    session_key = requested_session_key
-                    session_data = existing_session
-                    pending_courses = session_data.get("pending_courses")
-                    response = {"status": "authenticated", "session_key": session_key}
-                    if SESSION_TTL_SECONDS > 0:
-                        response["expires_in"] = SESSION_TTL_SECONDS
-                    await websocket.send(json.dumps(response))
-                    continue
-
-                is_valid, error = authenticate_payload(payload)
-                if not is_valid:
-                    await websocket.send(json.dumps({"error": error}))
-                    break
-
-                session_key, session_data = await create_session()
-                authenticated = True
-                pending_courses = session_data.get("pending_courses")
-                response = {"status": "authenticated", "session_key": session_key}
-                if SESSION_TTL_SECONDS > 0:
-                    response["expires_in"] = SESSION_TTL_SECONDS
-                await websocket.send(json.dumps(response))
-                continue
-
             try:
                 response, pending_courses = await handle_message(payload, pending_courses)
             except Exception as exc:
@@ -385,14 +353,11 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
                 response = {"error": str(exc)}
 
             await websocket.send(json.dumps(response))
-
-            if session_key and session_data is not None:
-                session_data["pending_courses"] = pending_courses
-                await update_session(session_key, session_data)
     finally:
-        if session_key and session_data is not None:
-            session_data["pending_courses"] = pending_courses
-            await update_session(session_key, session_data)
+        # Clear active websocket if this was the active connection
+        async with ACTIVE_WEBSOCKET_LOCK:
+            if ACTIVE_WEBSOCKET == websocket:
+                ACTIVE_WEBSOCKET = None
 
 
 async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:

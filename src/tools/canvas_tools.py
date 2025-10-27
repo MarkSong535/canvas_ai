@@ -205,85 +205,85 @@ class CanvasGetAssignments(CanvasAPIBase):
             return ToolResult(output=None, error=f"获取作业列表失败: {str(e)}")
 
 
-@TOOL.register_module(name="canvas_submit_assignment", force=True)
-class CanvasSubmitAssignment(CanvasAPIBase):
-    """提交作业"""
+# @TOOL.register_module(name="canvas_submit_assignment", force=True)
+# class CanvasSubmitAssignment(CanvasAPIBase):
+#     """提交作业"""
     
-    name = "canvas_submit_assignment"
-    description = "提交指定课程的作业，支持文本、URL等提交类型"
+#     name = "canvas_submit_assignment"
+#     description = "提交指定课程的作业，支持文本、URL等提交类型"
     
-    parameters = {
-        "type": "object",
-        "properties": {
-            "course_id": {
-                "type": "string",
-                "description": "课程ID"
-            },
-            "assignment_id": {
-                "type": "string",
-                "description": "作业ID"
-            },
-            "submission_type": {
-                "type": "string",
-                "description": "提交类型: online_text_entry, online_url, online_upload"
-            },
-            "body": {
-                "type": "string",
-                "description": "提交内容（文本提交时使用）",
-                "nullable": True
-            },
-            "url": {
-                "type": "string",
-                "description": "提交的URL（URL提交时使用）",
-                "nullable": True
-            }
-        },
-        "required": ["course_id", "assignment_id", "submission_type"],
-        "additionalProperties": False
-    }
+#     parameters = {
+#         "type": "object",
+#         "properties": {
+#             "course_id": {
+#                 "type": "string",
+#                 "description": "课程ID"
+#             },
+#             "assignment_id": {
+#                 "type": "string",
+#                 "description": "作业ID"
+#             },
+#             "submission_type": {
+#                 "type": "string",
+#                 "description": "提交类型: online_text_entry, online_url, online_upload"
+#             },
+#             "body": {
+#                 "type": "string",
+#                 "description": "提交内容（文本提交时使用）",
+#                 "nullable": True
+#             },
+#             "url": {
+#                 "type": "string",
+#                 "description": "提交的URL（URL提交时使用）",
+#                 "nullable": True
+#             }
+#         },
+#         "required": ["course_id", "assignment_id", "submission_type"],
+#         "additionalProperties": False
+#     }
     
-    output_type = "any"
+#     output_type = "any"
     
-    async def forward(
-        self, 
-        course_id: str, 
-        assignment_id: str,
-        submission_type: str,
-        body: str = "",
-        url: str = ""
-    ) -> ToolResult:
-        """提交作业"""
-        try:
-            data = {
-                "submission": {
-                    "submission_type": submission_type
-                }
-            }
+#     async def forward(
+#         self, 
+#         course_id: str, 
+#         assignment_id: str,
+#         submission_type: str,
+#         body: str = "",
+#         url: str = ""
+#     ) -> ToolResult:
+#         """提交作业"""
+#         try:
+#             data = {
+#                 "submission": {
+#                     "submission_type": submission_type
+#                 }
+#             }
             
-            if submission_type == "online_text_entry" and body:
-                data["submission"]["body"] = body
-            elif submission_type == "online_url" and url:
-                data["submission"]["url"] = url
+#             if submission_type == "online_text_entry" and body:
+#                 data["submission"]["body"] = body
+#             elif submission_type == "online_url" and url:
+#                 data["submission"]["url"] = url
             
-            result = await self._make_request(
-                "POST",
-                f"courses/{course_id}/assignments/{assignment_id}/submissions",
-                data=data
-            )
+#             result = await self._make_request(
+#                 "POST",
+#                 f"courses/{course_id}/assignments/{assignment_id}/submissions",
+#                 data=data
+#             )
             
-            if isinstance(result, dict) and "error" in result:
-                return ToolResult(output=None, error=result["error"])
+#             if isinstance(result, dict) and "error" in result:
+#                 return ToolResult(output=None, error=result["error"])
             
-            return ToolResult(
-                output=f"作业提交成功！\n"
-                       f"- 作业ID: {assignment_id}\n"
-                       f"- 提交类型: {submission_type}\n"
-                       f"- 提交时间: {result.get('submitted_at', '未知')}",
-                error=None
-            )
+#             return ToolResult(
+#                 output=f"作业提交成功！\n"
+#                        f"- 作业ID: {assignment_id}\n"
+#                        f"- 提交类型: {submission_type}\n"
+#                        f"- 提交时间: {result.get('submitted_at', '未知')}",
+#                 error=None
+#             )
             
-        except Exception as e:
-            return ToolResult(output=None, error=f"提交作业失败: {str(e)}")
+#         except Exception as e:
+#             return ToolResult(output=None, error=f"提交作业失败: {str(e)}")
 
 
 @TOOL.register_module(name="canvas_get_modules", force=True)
@@ -488,63 +488,63 @@ class CanvasGetDiscussions(CanvasAPIBase):
             return ToolResult(output=None, error=f"获取讨论列表失败: {str(e)}")
 
 
-@TOOL.register_module(name="canvas_post_discussion", force=True)
-class CanvasPostDiscussion(CanvasAPIBase):
-    """在讨论中发帖"""
+# @TOOL.register_module(name="canvas_post_discussion", force=True)
+# class CanvasPostDiscussion(CanvasAPIBase):
+#     """在讨论中发帖"""
     
-    name = "canvas_post_discussion"
-    description = "在指定的讨论主题中发表回复或评论"
+#     name = "canvas_post_discussion"
+#     description = "在指定的讨论主题中发表回复或评论"
     
-    parameters = {
-        "type": "object",
-        "properties": {
-            "course_id": {
-                "type": "string",
-                "description": "课程ID"
-            },
-            "topic_id": {
-                "type": "string",
-                "description": "讨论主题ID"
-            },
-            "message": {
-                "type": "string",
-                "description": "发帖内容"
-            }
-        },
-        "required": ["course_id", "topic_id", "message"],
-        "additionalProperties": False
-    }
+#     parameters = {
+#         "type": "object",
+#         "properties": {
+#             "course_id": {
+#                 "type": "string",
+#                 "description": "课程ID"
+#             },
+#             "topic_id": {
+#                 "type": "string",
+#                 "description": "讨论主题ID"
+#             },
+#             "message": {
+#                 "type": "string",
+#                 "description": "发帖内容"
+#             }
+#         },
+#         "required": ["course_id", "topic_id", "message"],
+#         "additionalProperties": False
+#     }
     
-    output_type = "any"
+#     output_type = "any"
     
-    async def forward(
-        self, 
-        course_id: str, 
-        topic_id: str, 
-        message: str
-    ) -> ToolResult:
-        """发表讨论回复"""
-        try:
-            data = {"message": message}
+#     async def forward(
+#         self, 
+#         course_id: str, 
+#         topic_id: str, 
+#         message: str
+#     ) -> ToolResult:
+#         """发表讨论回复"""
+#         try:
+#             data = {"message": message}
             
-            result = await self._make_request(
-                "POST",
-                f"courses/{course_id}/discussion_topics/{topic_id}/entries",
-                data=data
-            )
+#             result = await self._make_request(
+#                 "POST",
+#                 f"courses/{course_id}/discussion_topics/{topic_id}/entries",
+#                 data=data
+#             )
             
-            if isinstance(result, dict) and "error" in result:
-                return ToolResult(output=None, error=result["error"])
+#             if isinstance(result, dict) and "error" in result:
+#                 return ToolResult(output=None, error=result["error"])
             
-            return ToolResult(
-                output=f"讨论回复发表成功！\n"
-                       f"- 主题ID: {topic_id}\n"
-                       f"- 发表时间: {result.get('created_at', '未知')}",
-                error=None
-            )
+#             return ToolResult(
+#                 output=f"讨论回复发表成功！\n"
+#                        f"- 主题ID: {topic_id}\n"
+#                        f"- 发表时间: {result.get('created_at', '未知')}",
+#                 error=None
+#             )
             
-        except Exception as e:
-            return ToolResult(output=None, error=f"发表讨论失败: {str(e)}")
+#         except Exception as e:
+#             return ToolResult(output=None, error=f"发表讨论失败: {str(e)}")
 
 
 @TOOL.register_module(name="canvas_get_announcements", force=True)
@@ -1641,7 +1641,7 @@ class VectorStoreGetFile(AsyncTool):
 __all__ = [
     "CanvasListCourses",
     "CanvasGetAssignments",
-    "CanvasSubmitAssignment",
+    # "CanvasSubmitAssignment",
     "CanvasGetModules",
     "CanvasGetModuleItems",
     "CanvasGetFiles",
@@ -1651,7 +1651,7 @@ __all__ = [
     "CanvasGetFolderFiles",
     "CanvasSearchFiles",
     "CanvasGetDiscussions",
-    "CanvasPostDiscussion",
+    # "CanvasPostDiscussion",
     "CanvasGetAnnouncements",
     "CanvasGetCalendarEvents",
     "CanvasGetGrades",
