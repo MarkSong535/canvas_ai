@@ -53,7 +53,19 @@ def _parse_session_ttl(raw: Optional[str]) -> int:
     return max(ttl, 0)
 
 
+def _parse_session_duration(raw: Optional[str]) -> int:
+    """Parse session duration from environment variable (in minutes)."""
+    if raw is None:
+        return 30  # Default: 30 minutes
+    try:
+        duration = int(raw)
+    except (TypeError, ValueError):
+        return 30
+    return max(duration, 1)  # Minimum 1 minute
+
+
 SESSION_TTL_SECONDS = _parse_session_ttl(os.getenv("CANVAS_WS_SESSION_TTL"))
+SESSION_DURATION_MINUTES = _parse_session_duration(os.getenv("SESSION_DURATION"))
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
 SESSION_LOCK = asyncio.Lock()
 
@@ -330,6 +342,8 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
     global ACTIVE_WEBSOCKET
     
     pending_courses: Optional[List[Dict[str, Any]]] = None
+    session_start_time = time.time()
+    session_duration_seconds = SESSION_DURATION_MINUTES * 60
 
     # Reject new connection if one is already active
     async with ACTIVE_WEBSOCKET_LOCK:
@@ -340,6 +354,15 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
 
     try:
         async for raw_message in websocket:
+            # Check if session duration has been exceeded
+            elapsed_time = time.time() - session_start_time
+            if elapsed_time > session_duration_seconds:
+                await websocket.send(json.dumps({
+                    "error": f"Session duration limit ({SESSION_DURATION_MINUTES} minutes) exceeded. Connection will be closed."
+                }))
+                await websocket.close(1000, "Session duration limit exceeded")
+                break
+
             try:
                 payload = json.loads(raw_message)
             except json.JSONDecodeError:

@@ -65,6 +65,7 @@
         const { Panel } = Collapse;
 
         const WS_ENDPOINT = 'wss://canvas.marksong.tech:8765';
+        const SESSION_DURATION_MINUTES = 10; // Should match server SESSION_DURATION
 
         // Main React Application Component
         function App() {
@@ -77,6 +78,8 @@
             // 'Disconnected', 'Connecting', 'Connected', 'Error'
             const [status, setStatus] = React.useState('Disconnected');
             const [retryCount, setRetryCount] = React.useState(0);
+            const [connectionStartTime, setConnectionStartTime] = React.useState(null);
+            const [sessionTimeRemaining, setSessionTimeRemaining] = React.useState(null);
             
             const [chatQuery, setChatQuery] = React.useState('');
             const [chatHistory, setChatHistory] = React.useState([]); // { role: 'user' | 'agent', text: string }
@@ -90,10 +93,54 @@
             const logEndRef = React.useRef(null);
             const chatHistoryEndRef = React.useRef(null);
             const retryTimeoutRef = React.useRef(null);
+            const sessionTimerRef = React.useRef(null);
 
             // --- Computed State ---
             const isConnected = socket && socket.readyState === WebSocket.OPEN;
             const canChat = isConnected && !chatPending;
+
+            // --- Session Timer Effect ---
+            React.useEffect(() => {
+                if (!connectionStartTime) {
+                    setSessionTimeRemaining(null);
+                    return;
+                }
+
+                const updateTimer = () => {
+                    const elapsed = Date.now() - connectionStartTime;
+                    const remaining = (SESSION_DURATION_MINUTES * 60 * 1000) - elapsed;
+                    
+                    if (remaining <= 0) {
+                        setSessionTimeRemaining(0);
+                        if (sessionTimerRef.current) {
+                            clearInterval(sessionTimerRef.current);
+                            sessionTimerRef.current = null;
+                        }
+                        return;
+                    }
+                    
+                    setSessionTimeRemaining(remaining);
+                };
+
+                updateTimer();
+                sessionTimerRef.current = setInterval(updateTimer, 1000);
+
+                return () => {
+                    if (sessionTimerRef.current) {
+                        clearInterval(sessionTimerRef.current);
+                        sessionTimerRef.current = null;
+                    }
+                };
+            }, [connectionStartTime]);
+
+            // --- Format time remaining ---
+            const formatTimeRemaining = React.useCallback((milliseconds) => {
+                if (milliseconds === null) return '';
+                const totalSeconds = Math.floor(milliseconds / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }, []);
 
             // --- Utility Functions ---
             
@@ -166,6 +213,7 @@
                         log('Connected to server.', 'system');
                         setStatus('Connected');
                         setRetryCount(0);
+                        setConnectionStartTime(Date.now());
                         
                         // Request course list on connection
                         requestCourseList(newSocket);
@@ -211,6 +259,7 @@
                         setStatus('Disconnected');
                         setChatPending(false);
                         setCourseList([]);
+                        setConnectionStartTime(null);
                         
                         // Schedule retry
                         const delay = Math.min(5000, 1000 * Math.pow(1.5, retryCount));
@@ -395,6 +444,18 @@
                     <Header className="flex items-center" style={{ backgroundColor: '#204560' }}>
                         <Title level={2} className="!text-white !mb-0">Canvas AI Client</Title>
                         <div className="ml-auto flex items-center gap-4">
+                            {sessionTimeRemaining !== null && (
+                                <div className="flex items-center gap-2">
+                                    <Text className="!text-white text-sm">
+                                        Session: {formatTimeRemaining(sessionTimeRemaining)}
+                                    </Text>
+                                    {sessionTimeRemaining < 5 * 60 * 1000 && sessionTimeRemaining > 0 && (
+                                        <Tag color="warning" className="!mb-0">
+                                            Expiring Soon
+                                        </Tag>
+                                    )}
+                                </div>
+                            )}
                             <a 
                                 href="https://github.com/MarkSong535/canvas_ai" 
                                 target="_blank" 
