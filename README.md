@@ -1,5 +1,7 @@
 # Canvas Student Agent
 
+[Demo](https://github.com/MarkSong535/canvas_ai)
+
 An OpenAI-powered Canvas LMS companion tailored for student accounts. The project ships with a conversational CLI, a WebSocket service for machine-to-machine integrations, and a bulk file downloader that can populate OpenAI Vector Stores.
 
 ---
