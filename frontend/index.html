@@ -1,594 +1,978 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Canvas AI Client</title>
-    
-    <!-- 1. Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. React & ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- 3. Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- 4. Day.js (Antd Dependency) -->
-    <script src="https://unpkg.com/dayjs@1/dayjs.min.js"></script>
-    
-    <!-- 5. Ant Design (JS & CSS) -->
-    <script src="https://unpkg.com/antd@5/dist/antd.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/antd@5/dist/reset.css" />
-
     <style>
-        /* Basic body styling */
-        body {
-            background-color: #f0f2f5;
+      @font-face {
+        font-family: "SF Pro Rounded";
+        src: url("https://g.marksong.tech/fonts/SF-Pro-Rounded-Regular.woff2")
+          format("woff2");
+        font-weight: 400;
+        font-style: normal;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --bg: #0d1621;
+        --surface: #111e2e;
+        --surface2: #172538;
+        --border: #1e3248;
+        --accent: #4a9eff;
+        --accent-dim: rgba(74, 158, 255, 0.12);
+        --text: #dde6f0;
+        --text-dim: #5e809e;
+        --text-dimmer: #2e4a62;
+        --red: #ff5a5a;
+        --green: #5aff8c;
+      }
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SF Pro Rounded";
+      }
+      .app {
+        display: grid;
+        grid-template-rows: 56px 1fr auto;
+        height: 100vh;
+        max-width: 860px;
+        margin: 0 auto;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        border-bottom: 1px solid var(--border);
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo-mark {
+        width: 28px;
+        height: 28px;
+        background: var(--accent);
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: #fff;
+      }
+      .logo-text {
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .logo-sub {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--text-dim);
+        font-family: inherit;
+        text-decoration: none;
+        transition:
+          color 0.15s ease,
+          opacity 0.15s ease;
+      }
+      .logo-sub:hover {
+        color: var(--text);
+        opacity: 1;
+      }
+      .logo-sub img {
+        width: 12px;
+        height: 12px;
+        display: block;
+        filter: brightness(0) saturate(100%) invert(89%) sepia(11%)
+          saturate(242%) hue-rotate(171deg) brightness(95%) contrast(92%);
+      }
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-dimmer);
+        transition: all 0.4s;
+      }
+      .status-dot.ready {
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+      }
+      .status-dot.error {
+        background: var(--red);
+      }
+      .session-badge {
+        font-family: inherit;
+        font-size: 10px;
+        color: var(--text-dimmer);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 3px 8px;
+        border-radius: 20px;
+      }
+      .messages {
+        overflow-y: auto;
+        padding: 32px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        scroll-behavior: smooth;
+      }
+      .messages::-webkit-scrollbar {
+        width: 4px;
+      }
+      .messages::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+      .msg {
+        display: flex;
+        gap: 12px;
+        padding: 14px 0;
+        animation: fadeUp 0.2s ease;
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
         }
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #000;
-            }
+        to {
+          opacity: 1;
+          transform: translateY(0);
         }
+      }
+      .msg-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        flex-shrink: 0;
+        display: grid;
+        place-items: center;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        margin-top: 1px;
+      }
+      .msg.user .msg-avatar {
+        background: var(--accent-dim);
+        color: var(--accent);
+        border: 1px solid rgba(74, 158, 255, 0.25);
+      }
+      .msg.ai .msg-avatar {
+        background: var(--surface2);
+        color: var(--text-dim);
+        border: 1px solid var(--border);
+      }
+      .msg-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .msg-role {
+        font-size: 11px;
+        font-family: inherit;
+        color: var(--text-dimmer);
+        margin-bottom: 6px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      .msg.user .msg-role {
+        color: rgba(74, 158, 255, 0.5);
+      }
+      .msg-text {
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--text);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .msg.user .msg-text {
+        color: #9ab8d4;
+      }
+      .typing-dots {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        padding: 4px 0;
+      }
+      .typing-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--text-dimmer);
+        animation: bounce 1.2s infinite;
+      }
+      .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes bounce {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+        }
+        30% {
+          transform: translateY(-5px);
+        }
+      }
+      .empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: var(--text-dimmer);
+        text-align: center;
+        padding: 40px;
+      }
+      .empty-icon {
+        font-size: 36px;
+        margin-bottom: 8px;
+      }
+      .empty h2 {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--text-dim);
+      }
+      .empty p {
+        font-size: 13px;
+        line-height: 1.5;
+        max-width: 320px;
+      }
+      .suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+        justify-content: center;
+      }
+      .suggestion {
+        font-size: 12px;
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background: var(--surface);
+        color: var(--text-dim);
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+      }
+      .suggestion:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-dim);
+      }
+      .input-bar {
+        padding: 16px 24px 24px;
+      }
+      .input-wrap {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        transition: border-color 0.15s;
+      }
+      .input-wrap:focus-within {
+        border-color: rgba(74, 158, 255, 0.4);
+      }
+      textarea {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.5;
+        resize: none;
+        min-height: 34px;
+        max-height: 140px;
+        padding: 6px 0;
+      }
+      textarea::placeholder {
+        color: var(--text-dimmer);
+      }
+      .send-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 7px;
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: all 0.15s;
+      }
+      .send-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      .send-btn:not(:disabled):hover {
+        transform: scale(1.05);
+      }
+      .send-btn svg {
+        width: 15px;
+        height: 15px;
+      }
+      .input-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .secondary-btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 12px;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+      }
+      .secondary-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-dim);
+      }
+      .secondary-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .course-status {
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+      .input-hint {
+        font-size: 11px;
+        color: var(--text-dimmer);
+        font-family: inherit;
+        margin-left: auto;
+        white-space: nowrap;
+      }
+      .input-hint kbd {
+        font-family: inherit;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 1px 5px;
+      }
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        padding: 20px;
+        background: rgba(5, 11, 18, 0.72);
+        display: grid;
+        place-items: center;
+        z-index: 50;
+      }
+      .modal-backdrop[hidden] {
+        display: none;
+      }
+      .modal-card {
+        width: min(100%, 560px);
+        max-height: min(78vh, 680px);
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+      .modal-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 20px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .modal-title {
+        font-size: 16px;
+        font-weight: 500;
+      }
+      .modal-copy {
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--text-dim);
+        margin-top: 4px;
+      }
+      .close-btn {
+        appearance: none;
+        border: none;
+        background: transparent;
+        color: var(--text-dim);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 4px;
+      }
+      .close-btn:hover {
+        color: var(--text);
+      }
+      .modal-body {
+        padding: 14px 20px 0;
+        overflow: auto;
+      }
+      .course-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-bottom: 16px;
+      }
+      .course-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--surface2);
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      .course-option:hover {
+        border-color: rgba(74, 158, 255, 0.4);
+      }
+      .course-option input {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        margin-top: 2px;
+        accent-color: var(--accent);
+      }
+      .course-name {
+        font-size: 13px;
+        color: var(--text);
+      }
+      .course-meta {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-top: 3px;
+      }
+      .course-empty {
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--text-dim);
+        padding: 6px 0 18px;
+      }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 20px 20px;
+        border-top: 1px solid var(--border);
+      }
+      .modal-btn {
+        appearance: none;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .modal-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .modal-btn.muted {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-dim);
+      }
+      .modal-btn.primary {
+        border: none;
+        background: var(--accent);
+        color: #fff;
+      }
+      @media (max-width: 640px) {
+        header {
+          padding: 0 16px;
+        }
+        .messages {
+          padding: 24px 16px;
+        }
+        .input-bar {
+          padding: 16px 16px 20px;
+        }
+        .input-actions {
+          align-items: center;
+          gap: 10px;
+        }
+        .secondary-btn {
+          flex-shrink: 0;
+        }
+        .course-status {
+          min-width: 0;
+          flex: 1;
+        }
+        .input-hint {
+          text-align: right;
+        }
+        .modal-card {
+          border-radius: 16px;
+        }
+      }
     </style>
-</head>
-<body>
-    <div id="root" class="h-screen"></div>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo">
+          <!--<div class="logo-mark">C↑</div>-->
+          <div>
+            <div class="logo-text">Canvas AI Agent</div>
+            <a
+              class="logo-sub"
+              href="https://github.com/MarkSong535/canvas_ai"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img src="./github-mark.svg" alt="" />
+              <span>GitHub</span>
+            </a>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span class="session-badge" id="sessionBadge">connecting…</span>
+          <div class="status-dot" id="statusDot"></div>
+        </div>
+      </header>
+      <div class="messages" id="messages">
+        <div class="empty" id="empty">
+          <div class="empty-icon">🎓</div>
+          <h2>Canvas AI Agent</h2>
+          <p>
+            Your AI assistant for Canvas. Ask about your courses, assignments,
+            grades, or files.
+          </p>
+          <div class="suggestions">
+            <div class="suggestion" onclick="suggest(this)">
+              What courses am I in?
+            </div>
+            <div class="suggestion" onclick="suggest(this)">
+              Any upcoming assignments?
+            </div>
+            <div class="suggestion" onclick="suggest(this)">
+              Show my todo list
+            </div>
+            <div class="suggestion" onclick="suggest(this)">
+              Upcoming calendar events
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="input-bar">
+        <div class="input-wrap">
+          <textarea
+            id="input"
+            placeholder="Ask about courses, assignments, grades, files…"
+            rows="1"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+          <button
+            class="send-btn"
+            id="sendBtn"
+            onclick="sendMessage()"
+            disabled
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="input-actions">
+          <button
+            class="secondary-btn"
+            id="coursesBtn"
+            type="button"
+            onclick="openCourseModal()"
+            disabled
+          >
+            Select Courses for Download
+          </button>
+          <div class="course-status" id="courseStatus">
+            Reconnect to load courses
+          </div>
+          <div class="input-hint">
+            <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for newline
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="modal-backdrop"
+      id="courseModal"
+      hidden
+      onclick="handleModalBackdrop(event)"
+    >
+      <div
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="courseModalTitle"
+      >
+        <div class="modal-head">
+          <div>
+            <div class="modal-title" id="courseModalTitle">
+              Select Courses for Download
+            </div>
+            <div class="modal-copy">
+              Choose one or more courses, then start the same download flow used
+              in the original page.
+            </div>
+          </div>
+          <button
+            class="close-btn"
+            type="button"
+            onclick="closeCourseModal()"
+            aria-label="Close course selector"
+          >
+            ×
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="course-list" id="courseList"></div>
+          <div class="course-empty" id="courseEmpty" hidden>
+            No courses are available yet. Try reconnecting in a moment.
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button
+            class="modal-btn muted"
+            type="button"
+            onclick="closeCourseModal()"
+          >
+            Cancel
+          </button>
+          <button
+            class="modal-btn primary"
+            id="downloadCoursesBtn"
+            type="button"
+            onclick="downloadSelectedCourses()"
+            disabled
+          >
+            Start Download
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      const WS_ENDPOINT = "wss://canvas.marksong.tech:8765";
 
-    <script type="text/babel">
-        // Babel will transpile all code within this script tag
+      const messagesEl = document.getElementById("messages");
+      const inputEl = document.getElementById("input");
+      const sendBtn = document.getElementById("sendBtn");
+      const coursesBtn = document.getElementById("coursesBtn");
+      const statusDot = document.getElementById("statusDot");
+      const sessionBadge = document.getElementById("sessionBadge");
+      const courseStatusEl = document.getElementById("courseStatus");
+      const courseModalEl = document.getElementById("courseModal");
+      const courseListEl = document.getElementById("courseList");
+      const courseEmptyEl = document.getElementById("courseEmpty");
+      const downloadCoursesBtn = document.getElementById("downloadCoursesBtn");
 
-        const {
-            Button,
-            Card,
-            Checkbox,
-            Col,
-            Collapse,
-            ConfigProvider,
-            Form,
-            Input,
-            Layout,
-            Modal,
-            Row,
-            Space,
-            Spin,
-            Tag,
-            Typography,
-            App: AntApp, // Renamed to avoid conflict with our App
-            theme,
-        } = antd;
+      let ws,
+        connected = false,
+        pending = false;
+      let courseList = [];
+      let selectedCourseIds = [];
+      let coursesLoaded = false;
+      let courseStatusOverride = "";
+      let courseStatusTimer = null;
 
-        const { Header, Content } = Layout;
-        const { Title, Text, Paragraph } = Typography;
-        const { Panel } = Collapse;
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
 
-        const WS_ENDPOINT = 'wss://canvas.marksong.tech:8765';
-        const SESSION_DURATION_MINUTES = 10; // Should match server SESSION_DURATION
-
-        // Main React Application Component
-        function App() {
-            // Use AntApp's context for message/notification
-            const { message, notification } = AntApp.useApp();
-
-            // --- State Management ---
-            const [socket, setSocket] = React.useState(null);
-            
-            // 'Disconnected', 'Connecting', 'Connected', 'Error'
-            const [status, setStatus] = React.useState('Disconnected');
-            const [retryCount, setRetryCount] = React.useState(0);
-            const [connectionStartTime, setConnectionStartTime] = React.useState(null);
-            const [sessionTimeRemaining, setSessionTimeRemaining] = React.useState(null);
-            
-            const [chatQuery, setChatQuery] = React.useState('');
-            const [chatHistory, setChatHistory] = React.useState([]); // { role: 'user' | 'agent', text: string }
-            const [chatPending, setChatPending] = React.useState(false);
-            
-            const [courseList, setCourseList] = React.useState([]); // { id, index, name }
-            const [isModalVisible, setIsModalVisible] = React.useState(false);
-            const [selectedCourseIds, setSelectedCourseIds] = React.useState([]);
-            
-            const [logEntries, setLogEntries] = React.useState([]); // { time: string, message: string, type: 'system' | 'inbound' | 'outbound' | 'error' }
-            const logEndRef = React.useRef(null);
-            const chatHistoryEndRef = React.useRef(null);
-            const retryTimeoutRef = React.useRef(null);
-            const sessionTimerRef = React.useRef(null);
-
-            // --- Computed State ---
-            const isConnected = socket && socket.readyState === WebSocket.OPEN;
-            const canChat = isConnected && !chatPending;
-
-            // --- Session Timer Effect ---
-            React.useEffect(() => {
-                if (!connectionStartTime) {
-                    setSessionTimeRemaining(null);
-                    return;
-                }
-
-                const updateTimer = () => {
-                    const elapsed = Date.now() - connectionStartTime;
-                    const remaining = (SESSION_DURATION_MINUTES * 60 * 1000) - elapsed;
-                    
-                    if (remaining <= 0) {
-                        setSessionTimeRemaining(0);
-                        if (sessionTimerRef.current) {
-                            clearInterval(sessionTimerRef.current);
-                            sessionTimerRef.current = null;
-                        }
-                        return;
-                    }
-                    
-                    setSessionTimeRemaining(remaining);
-                };
-
-                updateTimer();
-                sessionTimerRef.current = setInterval(updateTimer, 1000);
-
-                return () => {
-                    if (sessionTimerRef.current) {
-                        clearInterval(sessionTimerRef.current);
-                        sessionTimerRef.current = null;
-                    }
-                };
-            }, [connectionStartTime]);
-
-            // --- Format time remaining ---
-            const formatTimeRemaining = React.useCallback((milliseconds) => {
-                if (milliseconds === null) return '';
-                const totalSeconds = Math.floor(milliseconds / 1000);
-                const minutes = Math.floor(totalSeconds / 60);
-                const seconds = totalSeconds % 60;
-                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }, []);
-
-            // --- Utility Functions ---
-            
-            /**
-             * Adds a new entry to the log state.
-             */
-            const log = React.useCallback((message, type = 'system') => {
-                const timestamp = new Date().toLocaleTimeString();
-                setLogEntries(prev => [...prev, { time: timestamp, message, type }]);
-            }, []);
-
-            /**
-             * Scrolls the log panel to the bottom.
-             */
-            React.useEffect(() => {
-                logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }, [logEntries]);
-            
-            /**
-             * Scrolls the chat history to the bottom.
-             */
-            React.useEffect(() => {
-                chatHistoryEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }, [chatHistory]);
-
-            // --- WebSocket Logic ---
-
-            /**
-             * Parses a JSON string safely.
-             */
-            const safeParseJSON = (text) => {
-                try {
-                    return JSON.parse(text);
-                } catch (error) {
-                    log(`Failed to parse JSON: ${text}`, 'error');
-                    return null;
-                }
-            };
-
-            /**
-             * Requests the course list from the server.
-             */
-            const requestCourseList = React.useCallback((sock) => {
-                if (!sock || sock.readyState !== WebSocket.OPEN) {
-                    log('Socket not open to request course list.', 'error');
-                    return;
-                }
-                const payload = JSON.stringify({ type: 'download' });
-                log(`→ ${payload}`, 'outbound');
-                sock.send(payload);
-            }, [log]);
-
-            /**
-             * Main connection handler with auto-retry.
-             */
-            const handleConnect = React.useCallback(() => {
-                // Clear any pending retry
-                if (retryTimeoutRef.current) {
-                    clearTimeout(retryTimeoutRef.current);
-                    retryTimeoutRef.current = null;
-                }
-
-                log(`Connecting to ${WS_ENDPOINT}... (attempt ${retryCount + 1})`, 'system');
-                setStatus('Connecting');
-
-                try {
-                    const newSocket = new WebSocket(WS_ENDPOINT);
-
-                    newSocket.onopen = () => {
-                        log('Connected to server.', 'system');
-                        setStatus('Connected');
-                        setRetryCount(0);
-                        setConnectionStartTime(Date.now());
-                        
-                        // Request course list on connection
-                        requestCourseList(newSocket);
-                    };
-
-                    const handleInbound = (event) => {
-                        log(`← ${event.data}`, 'inbound');
-                        const payload = safeParseJSON(event.data);
-                        if (!payload) return;
-
-                        if (payload.status === 'course_list') {
-                            const courses = payload.courses || [];
-                            setCourseList(courses);
-                            if (courses.length === 0) {
-                                log('Course list is empty.', 'system');
-                            } else {
-                                const summary = courses
-                                    .map(c => `${c.index}. ${c.name || 'Untitled'} (ID: ${c.id})`)
-                                    .join('\n');
-                                log(`Course roster:\n${summary}`, 'system');
-                            }
-                            return;
-                        }
-
-                        if (typeof payload.answer === 'string') {
-                            setChatHistory(prev => [...prev, { role: 'agent', text: payload.answer }]);
-                            setChatPending(false);
-                            return;
-                        }
-
-                        if (payload.error) {
-                            log(`Error: ${payload.error}`, 'error');
-                            notification.error({ message: 'Server Error', description: payload.error });
-                            setChatPending(false);
-                        }
-                    };
-
-                    newSocket.onmessage = handleInbound;
-
-                    newSocket.onclose = (event) => {
-                        log(`Connection closed (code ${event.code})`, 'system');
-                        setSocket(null);
-                        setStatus('Disconnected');
-                        setChatPending(false);
-                        setCourseList([]);
-                        setConnectionStartTime(null);
-                        
-                        // Schedule retry
-                        const delay = Math.min(5000, 1000 * Math.pow(1.5, retryCount));
-                        log(`Reconnecting in ${Math.round(delay / 1000)}s...`, 'system');
-                        setRetryCount(prev => prev + 1);
-                        retryTimeoutRef.current = setTimeout(() => {
-                            handleConnect();
-                        }, delay);
-                    };
-
-                    newSocket.onerror = (event) => {
-                        log(`WebSocket error: ${event.message || 'Connection failed'}`, 'error');
-                        setStatus('Error');
-                    };
-
-                    setSocket(newSocket);
-
-                } catch (error) {
-                    log(`Failed to create WebSocket: ${error}`, 'error');
-                    setStatus('Error');
-                    
-                    // Schedule retry on exception
-                    const delay = Math.min(5000, 1000 * Math.pow(1.5, retryCount));
-                    setRetryCount(prev => prev + 1);
-                    retryTimeoutRef.current = setTimeout(() => {
-                        handleConnect();
-                    }, delay);
-                }
-            }, [log, requestCourseList, safeParseJSON, notification, retryCount]);
-
-            /**
-             * Clean up socket connection on unmount.
-             */
-            React.useEffect(() => {
-                return () => {
-                    if (retryTimeoutRef.current) {
-                        clearTimeout(retryTimeoutRef.current);
-                    }
-                    if (socket && socket.readyState === WebSocket.OPEN) {
-                        log('Closing socket connection.', 'system');
-                        socket.close(1000, 'Component unmounting');
-                    }
-                };
-            }, [socket, log]);
-
-            /**
-             * Auto-connect on mount.
-             */
-            React.useEffect(() => {
-                handleConnect();
-            }, []);
-
-
-            // --- UI Event Handlers ---
-
-            const handleSendChat = () => {
-                if (!chatQuery.trim()) {
-                    message.warning('Please enter a query.');
-                    return;
-                }
-                if (!canChat) {
-                    message.error('Not connected or authenticated.');
-                    return;
-                }
-
-                const payload = JSON.stringify({ type: 'chat', query: chatQuery });
-                log(`→ ${payload}`, 'outbound');
-                socket.send(payload);
-                
-                setChatHistory(prev => [...prev, { role: 'user', text: chatQuery }]);
-                setChatQuery('');
-                setChatPending(true);
-            };
-
-            const handleChatPressEnter = (event) => {
-                if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
-                    return;
-                }
-                event.preventDefault();
-                handleSendChat();
-            };
-
-            const handleSelectCourses = () => {
-                if (courseList.length === 0) {
-                    message.info('Course list is empty or not yet loaded.');
-                    return;
-                }
-                setSelectedCourseIds([]);
-                setIsModalVisible(true);
-            };
-            
-            const handleModalOk = () => {
-                if (selectedCourseIds.length === 0) {
-                    message.warning('Please select at least one course.');
-                    return;
-                }
-
-                // Find the full course objects from the IDs
-                const selectedCourses = courseList.filter(c => selectedCourseIds.includes(c.id));
-                const course_ids = selectedCourses.map(c => c.id);
-                const course_indices = selectedCourses.map(c => c.index);
-
-                const payload = JSON.stringify({
-                    type: 'download',
-                    auto_confirm: true,
-                    course_ids,
-                    course_indices
-                });
-
-                log(`→ ${payload}`, 'outbound');
-                socket.send(payload);
-                notification.info({ 
-                    message: 'Download Started', 
-                    description: `Requested download for ${selectedCourseIds.length} course(s).` 
-                });
-
-                setIsModalVisible(false);
-                setSelectedCourseIds([]);
-            };
-            
-            const handleModalCancel = () => {
-                setIsModalVisible(false);
-            };
-            
-            const onCheckboxGroupChange = (checkedValues) => {
-                setSelectedCourseIds(checkedValues);
-            };
-
-            // --- Log & Chat Renderers ---
-            
-            const renderStatusTag = () => {
-                let color = 'default';
-                switch (status) {
-                    case 'Connected': color = 'success'; break;
-                    case 'Connecting': color = 'processing'; break;
-                    case 'Error': color = 'error'; break;
-                    case 'Disconnected': color = 'warning'; break;
-                }
-                return <Tag color={color} className="text-sm">{status}</Tag>;
-            };
-            
-            const renderLogEntry = (entry) => {
-                let color;
-                switch (entry.type) {
-                    case 'system': color = 'text-blue-500'; break;
-                    case 'inbound': color = 'text-green-500'; break;
-                    case 'outbound': color = 'text-purple-500'; break;
-                    case 'error': color = 'text-red-500'; break;
-                    default: color = 'text-gray-500';
-                }
-                return (
-                    <div key={`${entry.time}-${entry.message.slice(0, 10)}`} className={`font-mono text-xs ${color} whitespace-pre-wrap`}>
-                        <span className="text-gray-400 dark:text-gray-600 mr-2">[{entry.time}]</span>
-                        {entry.message}
-                    </div>
-                );
-            };
-            
-            const renderChatEntry = (entry, index) => (
-                <div key={index} className="mb-3">
-                    <Text strong>{entry.role === 'agent' ? 'Agent' : 'You'}</Text>
-                    <Paragraph className="!mb-0 p-2 bg-gray-100 dark:bg-gray-800 rounded-md whitespace-pre-wrap">
-                        {entry.text}
-                    </Paragraph>
-                </div>
-            );
-            
-            // --- Modal Course Options ---
-            const courseOptions = courseList.map(course => ({
-                label: (
-                    <div className="flex flex-col">
-                        <span className="font-medium">{course.name || 'Untitled course'}</span>
-                        <small className="text-gray-500">Index: {course.index} • ID: {course.id}</small>
-                    </div>
-                ),
-                value: course.id,
-            }));
-
-            // --- Component Render ---
-            return (
-                <Layout className="min-h-full">
-                    <Header className="flex items-center" style={{ backgroundColor: '#204560' }}>
-                        <Title level={2} className="!text-white !mb-0">Canvas AI Client</Title>
-                        <div className="ml-auto flex items-center gap-4">
-                            {sessionTimeRemaining !== null && (
-                                <div className="flex items-center gap-2">
-                                    <Text className="!text-white text-sm">
-                                        Session: {formatTimeRemaining(sessionTimeRemaining)}
-                                    </Text>
-                                    {sessionTimeRemaining < 5 * 60 * 1000 && sessionTimeRemaining > 0 && (
-                                        <Tag color="warning" className="!mb-0">
-                                            Expiring Soon
-                                        </Tag>
-                                    )}
-                                </div>
-                            )}
-                            <a 
-                                href="https://github.com/MarkSong535/canvas_ai" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors"
-                            >
-                                <svg height="24" width="24" viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                                    <path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/>
-                                </svg>
-                                <span className="text-sm">GitHub</span>
-                            </a>
-                            {renderStatusTag()}
-                        </div>
-                    </Header>
-                    <Content className="p-4 md:p-8">
-                        <div className="max-w-4xl mx-auto">
-                            <Space direction="vertical" size="large" className="w-full">
-                                
-                                {/* Chat Panel */}
-                                <Card title="Chat">
-                                    <Spin spinning={chatPending} tip="Waiting for response...">
-                                        <Form onFinish={handleSendChat}>
-                                            <Form.Item>
-                                                <Input.TextArea
-                                                    rows={4}
-                                                    placeholder="e.g. List my Canvas courses"
-                                                    value={chatQuery}
-                                                    onChange={e => setChatQuery(e.target.value)}
-                                                    onPressEnter={handleChatPressEnter}
-                                                    disabled={!canChat}
-                                                />
-                                            </Form.Item>
-                                            <Space>
-                                                <Button type="primary" htmlType="submit" disabled={!canChat}>
-                                                    Send Chat
-                                                </Button>
-                                                <Button onClick={handleSelectCourses} disabled={!canChat}>
-                                                    Select Courses for Download
-                                                </Button>
-                                            </Space>
-                                        </Form>
-                                    </Spin>
-                                    
-                                    {/* Chat History */}
-                                    {chatHistory.length > 0 && (
-                                        <div className="mt-6 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md max-h-96 overflow-y-auto">
-                                            {chatHistory.map(renderChatEntry)}
-                                            <div ref={chatHistoryEndRef} />
-                                        </div>
-                                    )}
-                                </Card>
-
-                                {/* Log Panel */}
-                                <Card title="Event Log">
-                                    <Collapse ghost>
-                                        <Panel header="View Logs" key="1">
-                                            <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-md max-h-80 overflow-y-auto">
-                                                {logEntries.map(renderLogEntry)}
-                                                <div ref={logEndRef} />
-                                            </div>
-                                        </Panel>
-                                    </Collapse>
-                                </Card>
-
-                            </Space>
-                        </div>
-                    </Content>
-                    
-                    {/* Course Selection Modal */}
-                    <Modal
-                        title="Select Courses to Download"
-                        open={isModalVisible}
-                        onOk={handleModalOk}
-                        onCancel={handleModalCancel}
-                        confirmLoading={!canChat} // Reuse loading state
-                        okButtonProps={{ disabled: selectedCourseIds.length === 0 }}
-                    >
-                        <div className="max-h-80 overflow-y-auto py-2">
-                            <Checkbox.Group
-                                options={courseOptions}
-                                value={selectedCourseIds}
-                                onChange={onCheckboxGroupChange}
-                                className="w-full"
-                            >
-                                <Space direction="vertical" className="w-full">
-                                    {courseOptions.map(opt => (
-                                        <Checkbox key={opt.value} value={opt.value} className="!ml-0 p-2 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-md w-full">
-                                            {opt.label}
-                                        </Checkbox>
-                                    ))}
-                                </Space>
-                            </Checkbox.Group>
-                        </div>
-                    </Modal>
-                </Layout>
-            );
+      function setCourseStatus(text, durationMs) {
+        courseStatusOverride = text || "";
+        if (courseStatusTimer) clearTimeout(courseStatusTimer);
+        if (durationMs) {
+          courseStatusTimer = setTimeout(() => {
+            courseStatusOverride = "";
+            courseStatusTimer = null;
+            updateCourseControls();
+          }, durationMs);
+        } else {
+          courseStatusTimer = null;
         }
-        
-        // --- Theme and App Wrapper ---
-        
-        const { darkAlgorithm, defaultAlgorithm } = theme;
+        updateCourseControls();
+      }
 
-        function ThemeWrapper() {
-            // Detect user's preferred color scheme
-            const [isDarkMode, setIsDarkMode] = React.useState(
-                window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-            );
-
-            React.useEffect(() => {
-                const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-                const handleChange = (e) => setIsDarkMode(e.matches);
-                
-                mediaQuery.addEventListener('change', handleChange);
-                return () => mediaQuery.removeEventListener('change', handleChange);
-            }, []);
-
-            return (
-                <ConfigProvider 
-                    theme={{
-                        algorithm: isDarkMode ? darkAlgorithm : defaultAlgorithm,
-                    }}
-                >
-                    {/* AntApp provides context for message/notification */}
-                    <AntApp>
-                        <App />
-                    </AntApp>
-                </ConfigProvider>
-            );
+      function updateCourseControls() {
+        let statusText = courseStatusOverride;
+        if (!statusText) {
+          if (!connected) statusText = "Reconnect to load courses";
+          else if (!coursesLoaded) statusText = "Loading courses…";
+          else if (courseList.length === 0) statusText = "No courses available";
+          else
+            statusText = `${courseList.length} course${courseList.length === 1 ? "" : "s"} ready`;
         }
+        courseStatusEl.textContent = statusText;
+        coursesBtn.disabled =
+          pending || !connected || !coursesLoaded || courseList.length === 0;
+        downloadCoursesBtn.disabled =
+          pending || !connected || selectedCourseIds.length === 0;
+      }
 
-        // --- Mount the Application ---
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<ThemeWrapper />);
+      function renderCourseList() {
+        courseListEl.innerHTML = "";
+        courseEmptyEl.hidden = courseList.length !== 0;
+        courseList.forEach((course, idx) => {
+          const courseId = String(course.id);
+          const label = document.createElement("label");
+          label.className = "course-option";
+          label.innerHTML = `
+      <input type="checkbox" value="${escapeHtml(courseId)}"${selectedCourseIds.includes(courseId) ? " checked" : ""}>
+      <div>
+        <div class="course-name">${escapeHtml(course.name || "Untitled course")}</div>
+        <div class="course-meta">Index: ${escapeHtml(course.index ?? idx + 1)} • ID: ${escapeHtml(courseId)}</div>
+      </div>
+    `;
+          const checkbox = label.querySelector("input");
+          checkbox.addEventListener("change", handleCourseSelectionChange);
+          courseListEl.appendChild(label);
+        });
+        updateCourseControls();
+      }
+
+      function handleCourseSelectionChange() {
+        selectedCourseIds = Array.from(
+          courseListEl.querySelectorAll('input[type="checkbox"]:checked'),
+        ).map((input) => input.value);
+        updateCourseControls();
+      }
+
+      function requestCourseList() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "download" }));
+      }
+
+      function openCourseModal() {
+        if (!connected || !coursesLoaded || courseList.length === 0) {
+          setCourseStatus("Course list is empty or not yet loaded.", 2500);
+          return;
+        }
+        selectedCourseIds = [];
+        renderCourseList();
+        courseModalEl.hidden = false;
+      }
+
+      function closeCourseModal() {
+        courseModalEl.hidden = true;
+      }
+
+      function handleModalBackdrop(event) {
+        if (event.target === courseModalEl) closeCourseModal();
+      }
+
+      function downloadSelectedCourses() {
+        if (!connected || selectedCourseIds.length === 0) return;
+        const selectedCourses = courseList.filter((course) =>
+          selectedCourseIds.includes(String(course.id)),
+        );
+        if (selectedCourses.length === 0) {
+          setCourseStatus("Please select at least one course.", 2500);
+          return;
+        }
+        ws.send(
+          JSON.stringify({
+            type: "download",
+            auto_confirm: true,
+            course_ids: selectedCourses.map((course) => course.id),
+            course_indices: selectedCourses.map((course) => course.index),
+          }),
+        );
+        closeCourseModal();
+        selectedCourseIds = [];
+        renderCourseList();
+        setCourseStatus(
+          `Requested download for ${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"}.`,
+          3000,
+        );
+      }
+
+      function setConnected(v) {
+        connected = v;
+        statusDot.className = "status-dot " + (v ? "ready" : "error");
+        sessionBadge.textContent = v ? "connected" : "disconnected";
+        if (!v) {
+          courseStatusOverride = "";
+          if (courseStatusTimer) {
+            clearTimeout(courseStatusTimer);
+            courseStatusTimer = null;
+          }
+          coursesLoaded = false;
+          courseList = [];
+          selectedCourseIds = [];
+          closeCourseModal();
+          renderCourseList();
+        }
+        updateBtn();
+      }
+      function updateBtn() {
+        sendBtn.disabled = pending || !connected || !inputEl.value.trim();
+        updateCourseControls();
+      }
+      function autoResize(el) {
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 140) + "px";
+        updateBtn();
+      }
+      function scrollBottom() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+      function removeEmpty() {
+        const e = document.getElementById("empty");
+        if (e) e.remove();
+      }
+
+      function addUserMsg(text) {
+        removeEmpty();
+        const d = document.createElement("div");
+        d.className = "msg user";
+        d.innerHTML = `<div class="msg-avatar">you</div><div class="msg-body"><div class="msg-role">you</div><div class="msg-text">${escapeHtml(text)}</div></div>`;
+        messagesEl.appendChild(d);
+        scrollBottom();
+      }
+
+      function addAiMsg(text) {
+        removeEmpty();
+        const d = document.createElement("div");
+        d.className = "msg ai";
+        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text">${escapeHtml(text)}</div></div>`;
+        messagesEl.appendChild(d);
+        scrollBottom();
+      }
+
+      function showTyping() {
+        removeEmpty();
+        const d = document.createElement("div");
+        d.className = "msg ai";
+        d.id = "typing-msg";
+        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+        messagesEl.appendChild(d);
+        scrollBottom();
+      }
+
+      function removeTyping() {
+        const t = document.getElementById("typing-msg");
+        if (t) t.remove();
+      }
+
+      function connect() {
+        sessionBadge.textContent = "connecting…";
+        ws = new WebSocket(WS_ENDPOINT);
+        ws.onopen = () => {
+          setConnected(true);
+          requestCourseList();
+        };
+        ws.onclose = () => {
+          setConnected(false);
+          setTimeout(connect, 3000);
+        };
+        ws.onerror = () => setConnected(false);
+        ws.onmessage = (event) => {
+          let d;
+          try {
+            d = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+
+          if (d.status === "course_list") {
+            coursesLoaded = true;
+            courseList = Array.isArray(d.courses) ? d.courses : [];
+            renderCourseList();
+            return;
+          }
+
+          if (typeof d.answer === "string") {
+            removeTyping();
+            addAiMsg(d.answer);
+            pending = false;
+            updateBtn();
+            return;
+          }
+
+          if (d.error) {
+            removeTyping();
+            addAiMsg("Error: " + d.error);
+            pending = false;
+            updateBtn();
+          }
+        };
+      }
+
+      function sendMessage() {
+        const text = inputEl.value.trim();
+        if (!text || pending || !connected) return;
+        addUserMsg(text);
+        showTyping();
+        pending = true;
+        updateBtn();
+        ws.send(JSON.stringify({ type: "chat", query: text }));
+        inputEl.value = "";
+        inputEl.style.height = "auto";
+        updateBtn();
+      }
+
+      function suggest(el) {
+        inputEl.value = el.textContent;
+        autoResize(inputEl);
+        sendMessage();
+      }
+      function handleKey(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }
+      inputEl.addEventListener("input", updateBtn);
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !courseModalEl.hidden) closeCourseModal();
+      });
+      renderCourseList();
+      connect();
     </script>
-</body>
+  </body>
 </html>
