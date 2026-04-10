@@ -392,7 +392,14 @@ async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_context.load_cert_chain(certfile=WSS_CERTFILE, keyfile=WSS_KEYFILE)
 
-    async with serve(websocket_handler, host, port, logger=None, ssl=ssl_context):
+    async with serve(
+        websocket_handler,
+        host,
+        port,
+        logger=None,
+        ssl=ssl_context,
+        origins=["https://markso.ng"],
+    ):
         await asyncio.Future()
 
 
