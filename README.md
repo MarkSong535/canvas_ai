@@ -1,6 +1,6 @@
 # Canvas Student Agent
 
-**Demo**: https://markso.ng/demo/canvas
+**Demo**: [https://markso.ng/demo/canvas](https://markso.ng/demo/canvas)
 
 An OpenAI-powered Canvas LMS companion tailored for student accounts. The project ships with a conversational CLI, a WebSocket service for machine-to-machine integrations, and a bulk file downloader that can populate OpenAI Vector Stores.
 
@@ -193,8 +193,4 @@ The test client authenticates once per session and prints responses to stdout. I
 ## License and Contact
 
 This project is provided for educational use. Reach out via GitHub Issues for feedback or questions.
-
-- GitHub: [@MarkSong535](https://github.com/MarkSong535)
-- GitHub: [@Deyu-Zhang](https://github.com/Deyu-Zhang)
-- Email: marksong535@gmail.com
 
