@@ -713,6 +713,9 @@
       let coursesLoaded = false;
       let courseStatusOverride = "";
       let courseStatusTimer = null;
+      let lastErrorText = "";
+      let lastErrorCount = 0;
+      let lastErrorTextEl = null;
 
       function escapeHtml(text) {
         return String(text)
@@ -866,7 +869,14 @@
         if (e) e.remove();
       }
 
+      function resetErrorCounter() {
+        lastErrorText = "";
+        lastErrorCount = 0;
+        lastErrorTextEl = null;
+      }
+
       function addUserMsg(text) {
+        resetErrorCounter();
         removeEmpty();
         const d = document.createElement("div");
         d.className = "msg user";
@@ -876,10 +886,34 @@
       }
 
       function addAiMsg(text) {
+        resetErrorCounter();
         removeEmpty();
         const d = document.createElement("div");
         d.className = "msg ai";
         d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text">${escapeHtml(text)}</div></div>`;
+        messagesEl.appendChild(d);
+        scrollBottom();
+      }
+
+      function addErrorMsg(text) {
+        const errorText = String(text);
+        removeEmpty();
+
+        if (lastErrorText === errorText && lastErrorTextEl) {
+          lastErrorCount += 1;
+          lastErrorTextEl.textContent = `Error: ${errorText} (x${lastErrorCount})`;
+          scrollBottom();
+          return;
+        }
+
+        lastErrorText = errorText;
+        lastErrorCount = 1;
+
+        const d = document.createElement("div");
+        d.className = "msg ai";
+        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text"></div></div>`;
+        lastErrorTextEl = d.querySelector(".msg-text");
+        lastErrorTextEl.textContent = `Error: ${errorText}`;
         messagesEl.appendChild(d);
         scrollBottom();
       }
@@ -936,7 +970,7 @@
 
           if (d.error) {
             removeTyping();
-            addAiMsg("Error: " + d.error);
+            addErrorMsg(d.error);
             pending = false;
             updateBtn();
           }
