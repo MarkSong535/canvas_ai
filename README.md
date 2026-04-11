@@ -2,7 +2,7 @@
 
 **Demo**: [https://markso.ng/demo/canvas](https://markso.ng/demo/canvas)
 
-An OpenAI-powered Canvas LMS companion tailored for student accounts. The project ships with a conversational CLI, a WebSocket service for machine-to-machine integrations, and a bulk file downloader that can populate OpenAI Vector Stores.
+An OpenAI-powered ReAct Agent for Canvas LMS companion tailored for student accounts. The project ships with a conversational CLI, a secured WebSocket service for machine-to-machine integrations, and a bulk Canvas LMS file downloader that can populate OpenAI Vector Stores.
 
 ---
 
@@ -58,20 +58,22 @@ LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-your-key
 
 # Canvas API
-CANVAS_URL=https://your-school.instructure.com
-CANVAS_ACCESS_TOKEN=your-canvas-token
+CANVAS_URL=https://instituation.instructure.com/
+CANVAS_ACCESS_TOKEN=your_canvas_access_token_here
 
-# WebSocket server
-CANVAS_WS_SECRET=choose-a-strong-password
-CANVAS_WS_TOTP_SECRET=base32-totp-secret
-CANVAS_WS_HOST=0.0.0.0              # Optional override
-CANVAS_WS_PORT=8765                 # Optional override
+# WebSocket Server Config
+CANVAS_WS_SECRET=your_websocket_secret_here
+CANVAS_WS_TOTP_SECRET=your_totp_secret_here
+CANVAS_WS_TOTP_DISABLED=false
 
-# Test client overrides (optional)
-CANVAS_WS_URI=ws://localhost:8765
-CANVAS_WS_TEST_COURSE_IDS=43210,48765
-CANVAS_WS_TEST_COURSE_INDICES=1,3
-CANVAS_WS_TEST_SKIP=false
+# WSS Config
+WSS_ENABLED=true
+WSS_CERTFILE=your_certfile_here
+WSS_KEYFILE=your_keyfile_here 
+CANVAS_WS_URI=wss://your_domain.com:8765
+
+# Max duration of a session in minutes
+SESSION_DURATION=10
 ```
 
 > **Generating a Canvas access token**
