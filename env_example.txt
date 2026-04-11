@@ -15,3 +15,12 @@ CANVAS_ACCESS_TOKEN=your_canvas_access_token_here
 # WebSocket Server Config
 CANVAS_WS_SECRET=your_websocket_secret_here
 CANVAS_WS_TOTP_SECRET=your_totp_secret_here
+CANVAS_WS_TOTP_DISABLED=false
+
+WSS_ENABLED=true
+WSS_CERTFILE=your_certfile_here
+WSS_KEYFILE=your_keyfile_here 
+CANVAS_WS_URI=wss://your_domain.com:8765
+
+# Max duration of a session in minutes
+SESSION_DURATION=10
