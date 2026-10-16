@@ -558,10 +558,13 @@
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px">
-          <span class="session-badge" id="sessionBadge">connecting…</span>
+          <span class="session-badge" id="sessionBadge">verifying…</span>
           <div class="status-dot" id="statusDot"></div>
         </div>
       </header>
+      <div id="verificationOverlay" style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); z-index: 1000">
+        <div id="canvasTurnstile"></div>
+      </div>
       <div class="messages" id="messages">
         <div class="empty" id="empty">
           <div class="empty-icon">🎓</div>
@@ -691,7 +694,7 @@
       </div>
     </div>
     <script>
-      const WS_ENDPOINT = "wss://canvas.marksong.tech:8765";
+      const WS_ENDPOINT = "wss://canvas.marksong.tech/";
 
       const messagesEl = document.getElementById("messages");
       const inputEl = document.getElementById("input");
@@ -836,6 +839,7 @@
 
       function setConnected(v) {
         connected = v;
+        document.getElementById("verificationOverlay").style.display = v ? "none" : "flex";
         statusDot.className = "status-dot " + (v ? "ready" : "error");
         sessionBadge.textContent = v ? "connected" : "disconnected";
         if (!v) {
@@ -933,16 +937,44 @@
         if (t) t.remove();
       }
 
-      function connect() {
+      let turnstileWidgetId;
+      let verificationRetryTimer;
+
+      function retryVerification() {
+        clearTimeout(verificationRetryTimer);
+        verificationRetryTimer = setTimeout(() => {
+          if (connected) return;
+          sessionBadge.textContent = "verifying…";
+          if (window.turnstile && turnstileWidgetId !== undefined) {
+            window.turnstile.reset(turnstileWidgetId);
+          }
+        }, 3000);
+      }
+
+      window.onCanvasTurnstileLoad = () => {
+        turnstileWidgetId = window.turnstile.render("#canvasTurnstile", {
+          sitekey: "0x4AAAAAAFTnE5faRQhVop6D",
+          action: "canvas_ws",
+          callback: (token) => connect(token),
+          "expired-callback": () => { if (!connected) retryVerification(); },
+          "error-callback": () => {
+            if (!connected) sessionBadge.textContent = "verification unavailable";
+          },
+        });
+      };
+
+      function connect(token) {
+        if (!token || (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING))) return;
+        clearTimeout(verificationRetryTimer);
         sessionBadge.textContent = "connecting…";
         ws = new WebSocket(WS_ENDPOINT);
         ws.onopen = () => {
-          setConnected(true);
-          requestCourseList();
+          sessionBadge.textContent = "verifying…";
+          ws.send(JSON.stringify({ type: "verify", token }));
         };
         ws.onclose = () => {
           setConnected(false);
-          setTimeout(connect, 3000);
+          retryVerification();
         };
         ws.onerror = () => setConnected(false);
         ws.onmessage = (event) => {
@@ -953,7 +985,14 @@
             return;
           }
 
+          if (d.status === "verified") {
+            setConnected(true);
+            requestCourseList();
+            return;
+          }
+
           if (d.status === "course_list") {
+            setCourseStatus("");
             coursesLoaded = true;
             courseList = Array.isArray(d.courses) ? d.courses : [];
             renderCourseList();
@@ -969,6 +1008,13 @@
           }
 
           if (d.error) {
+            if (d.status === "course_list_error") {
+              coursesLoaded = false;
+              courseList = [];
+              selectedCourseIds = [];
+              setCourseStatus("Course initialization failed. See error above.");
+              renderCourseList();
+            }
             removeTyping();
             addErrorMsg(d.error);
             pending = false;
@@ -1006,7 +1052,8 @@
         if (event.key === "Escape" && !courseModalEl.hidden) closeCourseModal();
       });
       renderCourseList();
-      connect();
+      updateBtn();
     </script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onCanvasTurnstileLoad&render=explicit" async defer></script>
   </body>
 </html>

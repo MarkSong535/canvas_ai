@@ -1,0 +1,10 @@
+docker run -d \
+  --name mk-hack-container-certbot \
+  -p 8765:8765 \
+  --restart unless-stopped \
+  --env-file /root/mkhack/.env \
+  -e WSS_CERTFILE=/certs/fullchain.pem \
+  -e WSS_KEYFILE=/certs/privkey.pem \
+  -v /etc/letsencrypt/live/canvas.marksong.tech:/certs:ro \
+  mk:hack \
+  python ws_server.py

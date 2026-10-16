@@ -84,6 +84,7 @@ class ModelManager(metaclass=Singleton):
             api_base = None
 
         openai_models = [
+            {"model_id": "gpt-6-luna", "aliases": ["gpt-6-luna", "openai-gpt-6-luna"], "kwargs": {"reasoning_effort": "none"}},
             {"model_id": "gpt-5", "aliases": ["openai-gpt-5", "gpt-5"]},
             {"model_id": "gpt-5-mini", "aliases": ["openai-gpt-5-mini"]},
             {"model_id": "gpt-5-nano", "aliases": ["openai-gpt-5-nano"]},
@@ -109,6 +110,7 @@ class ModelManager(metaclass=Singleton):
                     organization=organization,
                     project=project,
                     client_kwargs=client_kwargs or None,
+                    **model_config.get("kwargs", {}),
                 )
             except Exception as exc:  # noqa: BLE001 - 捕获并记录初始化异常
                 logger.error(f"注册 OpenAI 模型 {model_id} 失败: {exc}")

@@ -37,7 +37,7 @@ canvas_student_agent_config = dict(
     type="general_agent",
     name="canvas_student_agent",
     description="Canvas LMS study assistant that helps manage courses, assignments, discussions, and more",
-    model_id="gpt-4o",
+    model_id="gpt-6-luna",
     max_steps=15,
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt template path
     

@@ -9,6 +9,7 @@ DEFAULT_ANTHROPIC_MODELS = [
     "claude37-sonnet-thinking",
 ]
 UNSUPPORTED_STOP_MODELS = [
+    'gpt-6-luna',
     'claude37-sonnet',
     'o4-mini',
     'o3',

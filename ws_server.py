@@ -143,6 +143,7 @@ async def fetch_course_catalog() -> List[Dict[str, Any]]:
             f"{canvas_url}/api/v1/courses",
             headers,
             params={"enrollment_state": "active", "per_page": 100},
+            raise_on_error=True,
         )
 
     return courses
@@ -201,7 +202,7 @@ async def handle_download_request(
         try:
             courses = await fetch_course_catalog()
         except Exception as exc:  # noqa: BLE001
-            return {"error": f"Failed to fetch courses: {exc}"}, pending_courses
+            return {"status": "course_list_error", "error": f"Failed to fetch courses: {exc}"}, pending_courses
 
         course_list = [
             {
@@ -337,10 +338,60 @@ async def update_session(session_key: str, session_data: Dict[str, Any]) -> None
             SESSION_STORE[session_key] = session_data
 
 
+async def verify_turnstile_token(token: Any) -> bool:
+    """Redeem a single-use challenge token; every validation failure denies access."""
+    secret = os.getenv("TURNSTILE_SECRET", "")
+    hostnames = {host.strip() for host in os.getenv("TURNSTILE_HOSTNAMES", "").split(",") if host.strip()}
+    action = os.getenv("TURNSTILE_ACTION", "canvas_ws")
+    if not secret or not hostnames or not isinstance(token, str) or not token.strip() or len(token) > 2048:
+        return False
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.post(
+                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                data={"secret": secret, "response": token},
+            ) as response:
+                if response.status != 200:
+                    return False
+                result = await response.json()
+        return (
+            isinstance(result, dict)
+            and result.get("success") is True
+            and isinstance(result.get("hostname"), str)
+            and result.get("hostname") in hostnames
+            and result.get("action") == action
+        )
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        return False
+
+
+async def authenticate_websocket(websocket: WebSocketServerProtocol) -> bool:
+    """Require verification before acquiring a session or dispatching any request."""
+    try:
+        raw_message = await asyncio.wait_for(websocket.recv(), timeout=15)
+        if len(raw_message) > 4096:
+            raise ValueError("Oversized verification message")
+        payload = json.loads(raw_message)
+        verified = (
+            isinstance(payload, dict)
+            and payload.get("type") == "verify"
+            and await verify_turnstile_token(payload.get("token"))
+        )
+    except (asyncio.TimeoutError, ValueError, TypeError):
+        verified = False
+    if not verified:
+        await websocket.send(json.dumps({"status": "verification_error", "error": "Verification failed. Please refresh verification and try again."}))
+        await websocket.close(1008, "Verification required")
+    return verified
+
+
 async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
     """Handle a single WebSocket connection."""
     global ACTIVE_WEBSOCKET
-    
+
+    if not await authenticate_websocket(websocket):
+        return
+
     pending_courses: Optional[List[Dict[str, Any]]] = None
     session_start_time = time.time()
     session_duration_seconds = SESSION_DURATION_MINUTES * 60
@@ -353,6 +404,7 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
         ACTIVE_WEBSOCKET = websocket
 
     try:
+        await websocket.send(json.dumps({"status": "verified"}))
         async for raw_message in websocket:
             # Check if session duration has been exceeded
             elapsed_time = time.time() - session_start_time

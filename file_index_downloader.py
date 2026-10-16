@@ -110,7 +110,7 @@ def sanitize_filename(name: str) -> str:
     return name or "unnamed"
 
 
-async def fetch_all_pages(session, url, headers, params=None):
+async def fetch_all_pages(session, url, headers, params=None, *, raise_on_error=False):
     """Retrieve all pages of a paginated Canvas API endpoint."""
     all_data = []
     current_url = url
@@ -135,6 +135,22 @@ async def fetch_all_pages(session, url, headers, params=None):
                                 break
                     params = None  # Subsequent requests should not include original params
                 else:
+                    if raise_on_error:
+                        detail = ""
+                        try:
+                            error_data = await response.json()
+                            errors = error_data.get("errors", []) if isinstance(error_data, dict) else []
+                            if isinstance(errors, list):
+                                detail = "; ".join(
+                                    str(error.get("message", ""))
+                                    for error in errors if isinstance(error, dict)
+                                )[:300]
+                        except (ValueError, aiohttp.ContentTypeError):
+                            pass
+                        message = f"Canvas API request failed (HTTP {response.status})"
+                        if detail:
+                            message += f": {detail}"
+                        raise RuntimeError(message)
                     console.print(
                         f"⚠️  Request failed ({response.status}): {current_url}",
                         style="yellow",
@@ -142,6 +158,8 @@ async def fetch_all_pages(session, url, headers, params=None):
                     break
                     
         except Exception as e:
+            if raise_on_error:
+                raise
             console.print(f"❌ Request error: {e}", style="red")
             break
     
