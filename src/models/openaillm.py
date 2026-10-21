@@ -1,5 +1,5 @@
 from typing import Any
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
 from src.models.base import (ApiModel,
                              ChatMessage,
@@ -151,14 +151,14 @@ class OpenAIServerModel(ApiModel):
 
         return completion_kwargs
 
-    def generate_stream(
+    async def generate_stream(
         self,
         messages: list[ChatMessage],
         stop_sequences: list[str] | None = None,
         response_format: dict[str, str] | None = None,
         tools_to_call_from: list[Any] | None = None,
         **kwargs,
-    ) -> Generator[ChatMessageStreamDelta]:
+    ) -> AsyncGenerator[ChatMessageStreamDelta]:
         completion_kwargs = self._prepare_completion_kwargs(
             messages=messages,
             stop_sequences=stop_sequences,
@@ -167,12 +167,12 @@ class OpenAIServerModel(ApiModel):
             model=self.model_id,
             custom_role_conversions=self.custom_role_conversions,
             convert_images_to_image_urls=True,
-            http_client=self.http_client,
             **kwargs,
         )
-        for event in self.client.chat.completions.create(
+        stream = await self.client.chat.completions.create(
             **completion_kwargs, stream=True, stream_options={"include_usage": True}
-        ):
+        )
+        async for event in stream:
             if event.usage:
                 self._last_input_token_count = event.usage.prompt_tokens
                 self._last_output_token_count = event.usage.completion_tokens

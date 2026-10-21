@@ -32,8 +32,18 @@ def send_canvas_query(websocket) -> None:
     websocket.send(json.dumps(message))
     print(f"Sent: {message}")
 
-    response = websocket.recv()
-    print(f"Received: {response}")
+    # The server streams tool/delta frames before the final answer (or an error)
+    while True:
+        frame = json.loads(websocket.recv())
+        if frame.get("type") == "delta":
+            print(frame["text"], end="", flush=True)
+        elif frame.get("type") == "tool":
+            print(f"[calling {frame['name']}]")
+        elif frame.get("type") == "retract":
+            print("\n[answer retracted, retrying]")
+        else:
+            print(f"\nReceived: {frame}")
+            break
 
 
 def _parse_int_list(raw: Optional[str]) -> Optional[List[int]]:

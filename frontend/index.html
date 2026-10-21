@@ -227,6 +227,69 @@
           transform: translateY(-5px);
         }
       }
+      .msg-status {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-bottom: 6px;
+      }
+      .msg-status::before {
+        content: "";
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        margin-right: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        vertical-align: middle;
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.25;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      .stream-cursor {
+        display: inline-block;
+        width: 7px;
+        height: 1em;
+        margin-left: 2px;
+        vertical-align: text-bottom;
+        background: var(--accent);
+        animation: blink 1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      .msg-note {
+        align-self: center;
+        font-size: 11px;
+        color: var(--text-dimmer);
+        padding: 10px 0;
+      }
+      .new-chat-btn {
+        font-family: inherit;
+        font-size: 11px;
+        color: var(--text-dim);
+        background: transparent;
+        border: 1px solid var(--border);
+        padding: 4px 10px;
+        border-radius: 20px;
+        cursor: pointer;
+      }
+      .new-chat-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .new-chat-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
       .empty {
         flex: 1;
         display: flex;
@@ -558,6 +621,15 @@
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px">
+          <button
+            class="new-chat-btn"
+            id="newChatBtn"
+            type="button"
+            onclick="newChat()"
+            disabled
+          >
+            New chat
+          </button>
           <span class="session-badge" id="sessionBadge">verifying…</span>
           <div class="status-dot" id="statusDot"></div>
         </div>
@@ -707,6 +779,8 @@
       const courseListEl = document.getElementById("courseList");
       const courseEmptyEl = document.getElementById("courseEmpty");
       const downloadCoursesBtn = document.getElementById("downloadCoursesBtn");
+      const newChatBtn = document.getElementById("newChatBtn");
+      const emptyStateHtml = document.getElementById("empty").outerHTML;
 
       let ws,
         connected = false,
@@ -858,6 +932,7 @@
       }
       function updateBtn() {
         sendBtn.disabled = pending || !connected || !inputEl.value.trim();
+        newChatBtn.disabled = pending || !connected;
         updateCourseControls();
       }
       function autoResize(el) {
@@ -922,19 +997,92 @@
         scrollBottom();
       }
 
-      function showTyping() {
-        removeEmpty();
+      function addNoteMsg(text) {
         const d = document.createElement("div");
-        d.className = "msg ai";
-        d.id = "typing-msg";
-        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+        d.className = "msg-note";
+        d.textContent = text;
         messagesEl.appendChild(d);
         scrollBottom();
       }
 
-      function removeTyping() {
-        const t = document.getElementById("typing-msg");
-        if (t) t.remove();
+      // Streaming reply: one AI bubble that fills in as "delta" frames arrive
+      const TYPING_DOTS_HTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+      let streamText = "";
+
+      function streamBubble() {
+        return document.getElementById("stream-msg");
+      }
+
+      function showTyping() {
+        removeEmpty();
+        streamText = "";
+        const d = document.createElement("div");
+        d.className = "msg ai";
+        d.id = "stream-msg";
+        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-status" hidden></div><div class="msg-text">${TYPING_DOTS_HTML}</div></div>`;
+        messagesEl.appendChild(d);
+        scrollBottom();
+      }
+
+      function toolLabel(name) {
+        const n = String(name || "");
+        if (n.startsWith("vector_store")) return "Searching course files…";
+        const topic = n
+          .replace(/^canvas_/, "")
+          .replace(/^(get|list|search)_/, "")
+          .replace(/_/g, " ");
+        return topic ? `Checking ${topic}…` : "Working…";
+      }
+
+      function setStreamStatus(text) {
+        const b = streamBubble();
+        if (!b) return;
+        const s = b.querySelector(".msg-status");
+        s.textContent = text;
+        s.hidden = !text;
+        scrollBottom();
+      }
+
+      function renderStreamText() {
+        const b = streamBubble();
+        if (!b) return;
+        const t = b.querySelector(".msg-text");
+        if (!streamText) {
+          t.innerHTML = TYPING_DOTS_HTML;
+          return;
+        }
+        t.textContent = streamText;
+        const cursor = document.createElement("span");
+        cursor.className = "stream-cursor";
+        t.appendChild(cursor);
+        scrollBottom();
+      }
+
+      // Settle the streaming bubble: show `finalText`, or drop it when the reply failed
+      function finishStream(finalText) {
+        const b = streamBubble();
+        streamText = "";
+        if (!b) {
+          if (finalText !== undefined) addAiMsg(finalText);
+          return;
+        }
+        if (finalText === undefined) {
+          b.remove();
+          return;
+        }
+        resetErrorCounter();
+        b.removeAttribute("id");
+        b.querySelector(".msg-status").remove();
+        b.querySelector(".msg-text").textContent = finalText;
+        scrollBottom();
+      }
+
+      function newChat() {
+        if (pending || !connected) return;
+        ws.send(JSON.stringify({ type: "reset" }));
+        resetErrorCounter();
+        messagesEl.innerHTML = emptyStateHtml;
+        inputEl.focus();
       }
 
       let turnstileWidgetId;
@@ -973,6 +1121,8 @@
           ws.send(JSON.stringify({ type: "verify", token }));
         };
         ws.onclose = () => {
+          if (pending) finishStream();
+          pending = false;
           setConnected(false);
           retryVerification();
         };
@@ -986,8 +1136,32 @@
           }
 
           if (d.status === "verified") {
+            // The server starts a fresh conversation for every connection
+            if (!document.getElementById("empty")) {
+              addNoteMsg("Reconnected · earlier messages are no longer in context");
+            }
             setConnected(true);
             requestCourseList();
+            return;
+          }
+
+          if (d.status === "reset") return;
+
+          if (d.type === "tool") {
+            setStreamStatus(toolLabel(d.name));
+            return;
+          }
+
+          if (d.type === "delta") {
+            setStreamStatus("");
+            streamText += d.text;
+            renderStreamText();
+            return;
+          }
+
+          if (d.type === "retract") {
+            streamText = "";
+            renderStreamText();
             return;
           }
 
@@ -1000,8 +1174,7 @@
           }
 
           if (typeof d.answer === "string") {
-            removeTyping();
-            addAiMsg(d.answer);
+            finishStream(d.answer);
             pending = false;
             updateBtn();
             return;
@@ -1015,7 +1188,7 @@
               setCourseStatus("Course initialization failed. See error above.");
               renderCourseList();
             }
-            removeTyping();
+            finishStream();
             addErrorMsg(d.error);
             pending = false;
             updateBtn();

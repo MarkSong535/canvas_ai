@@ -6,9 +6,6 @@
 from src.tools.tools import Tool, ToolResult, AsyncTool, make_tool_instance
 from src.tools.final_answer import FinalAnswerTool
 
-# 可选：如果你创建了自定义工具，在这里导入
-# from src.tools.example_calculator import CalculatorTool
-
 __all__ = [
     "Tool",
     "ToolResult",

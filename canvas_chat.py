@@ -19,28 +19,16 @@ def check_and_install_dependencies():
         'aiohttp': 'aiohttp>=3.9.0',
         'dotenv': 'python-dotenv>=1.0.0',
         'rich': 'rich>=13.0.0',
-        'openai': 'openai>=1.0.0',
+        'openai': 'openai>=1.40.0',
         'pydantic': 'pydantic>=2.0.0',
         'jinja2': 'jinja2>=3.0.0',
         'yaml': 'pyyaml>=6.0.0',
         
         # Configuration and logging
         'mmengine': 'mmengine>=0.10.0',
-        'huggingface_hub': 'huggingface-hub>=0.19.0',
-        
-        # Document processing
-        'markitdown': 'markitdown',
-        
-        # Additional optional dependencies
+        'json5': 'json5',
         'PIL': 'Pillow',
-        'cv2': 'opencv-python',
-        'numpy': 'numpy',
         'requests': 'requests',
-        'tiktoken': 'tiktoken',
-        'anthropic': 'anthropic',
-        'bs4': 'beautifulsoup4',
-        'markdown': 'markdown',
-        'chardet': 'chardet',
     }
     
     missing_packages = []
@@ -142,11 +130,13 @@ import asyncio
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.prompt import Prompt
-from rich import print as rprint
+from rich.spinner import Spinner
+from rich.text import Text
 
 # Load environment variables
 load_dotenv()
@@ -154,6 +144,7 @@ load_dotenv()
 from src.models import model_manager
 from src.registry import AGENT
 from src.logger import logger
+from src.agent.stream_events import stream_agent_events
 
 
 console = Console()
@@ -179,6 +170,7 @@ def print_help():
     [bold cyan]📖 Available commands:[/bold cyan]
 
     [yellow]help[/yellow]     - Show this guide
+    [yellow]new[/yellow]      - Start a new conversation (forget earlier messages)
     [yellow]clear[/yellow]    - Clear the terminal window
     [yellow]examples[/yellow] - Show sample prompts
     [yellow]status[/yellow]   - Check Canvas connectivity
@@ -316,10 +308,10 @@ async def initialize_agent():
             console.print("7. Copy the token and add it to your .env file\n")
             return None
         
-        # Initialize the logger in quiet mode
+        # Initialize the logger in quiet mode: agent internals go to the log file, the terminal shows the chat UI
         log_dir = Path("workdir/canvas_chat")
         log_dir.mkdir(parents=True, exist_ok=True)
-        logger.init_logger(str(log_dir / "log.txt"))
+        logger.init_logger(str(log_dir / "log.txt"), console_output=False)
         
         # Import the agent configuration
         from configs.canvas_agent_config import agent_config
@@ -355,10 +347,12 @@ async def initialize_agent():
             model=model,
             tools=agent_config["tools"],
             max_steps=agent_config["max_steps"],
+            stream_outputs=agent_config.get("stream_outputs", False),
+            max_history_turns=agent_config.get("max_history_turns"),
             name=agent_config.get("name"),
             description=agent_config.get("description"),
         )
-        
+
         # Build the agent via the registry
         agent = AGENT.build(agent_build_config)
         
@@ -373,19 +367,38 @@ async def initialize_agent():
 
 
 async def process_query(agent, query: str):
-    """Handle a single user query."""
+    """Handle a single user query, rendering the answer live as it streams in."""
+    tools_used: list[str] = []
+    answer = ""
+    status = "Thinking…"
+
+    def render():
+        parts = []
+        if tools_used:
+            parts.append(Text("🔧 " + " → ".join(tools_used), style="dim"))
+        if answer:
+            parts.append(Markdown(answer))
+        else:
+            parts.append(Spinner("dots", text=Text(status, style="cyan")))
+        return Panel(Group(*parts), title="💡 Answer", title_align="left", border_style="green")
+
     try:
-        console.print("\n[bold cyan]🤔 The agent is thinking...[/bold cyan]")
-        
-    # Execute the agent
-        result = await agent.run(query)
-        
-    # Display the result
-        console.print("\n" + "=" * 70)
-        console.print("[bold green]💡 Answer:[/bold green]\n")
-        console.print(Panel(str(result), border_style="green"))
-        console.print("=" * 70 + "\n")
-        
+        console.print()
+        with Live(render(), console=console, refresh_per_second=12, vertical_overflow="visible") as live:
+            # reset=False keeps earlier exchanges in the agent's memory (multi-turn conversation)
+            async for event in stream_agent_events(agent, query, reset=False):
+                if event["type"] == "tool":
+                    tools_used.append(event["name"])
+                    status = f"Calling {event['name']}…"
+                elif event["type"] == "delta":
+                    answer += event["text"]
+                elif event["type"] == "retract":
+                    answer = ""
+                    status = "Retrying…"
+                elif event["type"] == "final":
+                    answer = event["answer"]
+                live.update(render())
+
     except Exception as e:
         console.print(f"\n[bold red]✗ Error while processing the query: {str(e)}[/bold red]\n")
 
@@ -448,6 +461,12 @@ async def main():
             elif command == "clear":
                 os.system('cls' if os.name == 'nt' else 'clear')
                 print_banner()
+                continue
+
+            elif command == "new":
+                agent.memory.reset()
+                conversation_count = 0
+                console.print("[green]✓ Started a new conversation.[/green]")
                 continue
             
             # Handle standard queries

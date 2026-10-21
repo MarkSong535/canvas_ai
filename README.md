@@ -43,7 +43,7 @@ canvas_ai/
 
 - Python 3.11+
 - A Canvas LMS account with student-level API access
-- An OpenAI API key (GPT-4o or compatible model)
+- An OpenAI API key (defaults to `gpt-6-luna`; see [Models](#models))
 - Optional: Assistants v2 Vector Store access if you plan to upload files
 
 ---
@@ -116,7 +116,15 @@ You: Show the upcoming assignments for Course 1
 Agent: [Table of assignments with due dates and status]
 ```
 
-Commands available inside the CLI: `help`, `status`, `examples`, `clear`, `exit`.
+Answers stream into the terminal as they are generated, with a status line showing which Canvas lookups the agent is making. The chat is multi-turn: follow-ups like "what about the second one?" see the earlier exchanges (the last `max_history_turns` turns, set in `configs/canvas_agent_config.py`).
+
+Commands available inside the CLI: `help`, `new` (start a fresh conversation), `status`, `examples`, `clear`, `exit`.
+
+---
+
+## Models
+
+Models are registered in `src/models/models.py`. Only models whose input **and** output price are at most $5 per 1M tokens are allowed; registration skips anything above `MAX_PRICE_PER_1M_TOKENS`. The current set is `gpt-6-luna` (default), `gpt-5.6-luna`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o-mini` and `o4-mini`. Pick one with `model_id` in `configs/canvas_agent_config.py`.
 
 ---
 
@@ -154,7 +162,12 @@ Authentication flow:
 2. Client sends `{ "type": "auth", "password": "...", "totp": "123456" }`
 3. Server verifies the secret and replies `{ "status": "authenticated" }`
 4. Subsequent messages can be:
-	 - Chat: `{ "type": "chat", "query": "List my courses" }`
+	 - Chat: `{ "type": "chat", "query": "List my courses" }`. The reply streams back as several frames:
+		 - `{ "type": "tool", "name": "canvas_list_courses" }` while the agent calls a Canvas tool
+		 - `{ "type": "delta", "text": "..." }` chunks of the answer as it is generated
+		 - `{ "type": "retract" }` if the partial answer was rejected (clear it and keep listening)
+		 - `{ "type": "answer", "answer": "..." }` the complete final answer (or `{ "error": "..." }`)
+	 - New conversation: `{ "type": "reset" }` → `{ "status": "reset" }`. Each connection starts its own conversation; within it the agent remembers earlier exchanges.
 	 - Download: staged workflow
 		 - Request course list -> `{ "type": "download" }`
 		 - Server responds with numbered courses

@@ -40,27 +40,29 @@ class AgentLogger(logging.Logger, metaclass=Singleton):
         self.console = Console()
         self.file_console = Console(file=StringIO())
 
-    def init_logger(self, log_path: str, level=logging.DEBUG):
+    def init_logger(self, log_path: str, level=logging.DEBUG, console_output: bool = True):
         """
         Initialize the logger with a file path and optional main process check.
 
         Args:
             log_path (str): The log file path.
             level (int, optional): The logging level. Defaults to logging.INFO.
-            accelerator (Accelerator, optional): Accelerator instance to determine the main process.
+            console_output (bool, optional): Also print logs to the terminal. Set False when the caller
+                renders its own terminal UI; logs then go to the file only.
         """
 
         # Add a console handler for logging to the console
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level)
-        console_handler.setFormatter(self.formatter)
-        # 设置控制台输出编码
-        if hasattr(console_handler.stream, 'reconfigure'):
-            try:
-                console_handler.stream.reconfigure(encoding='utf-8')
-            except:
-                pass
-        self.addHandler(console_handler)
+        if console_output:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(level)
+            console_handler.setFormatter(self.formatter)
+            # 设置控制台输出编码
+            if hasattr(console_handler.stream, 'reconfigure'):
+                try:
+                    console_handler.stream.reconfigure(encoding='utf-8')
+                except:
+                    pass
+            self.addHandler(console_handler)
 
         # Add a file handler for logging to the file
         file_handler = logging.FileHandler(
@@ -71,13 +73,17 @@ class AgentLogger(logging.Logger, metaclass=Singleton):
         self.addHandler(file_handler)
 
         # 设置Rich控制台，确保支持UTF-8和emoji
-        self.console = Console(width=100, force_terminal=True, legacy_windows=False)
         self.file_console = Console(
-            file=open(log_path, "a", encoding="utf-8"), 
-            width=100, 
+            file=open(log_path, "a", encoding="utf-8"),
+            width=100,
             force_terminal=False,
             legacy_windows=False
         )
+        if console_output:
+            self.console = Console(width=100, force_terminal=True, legacy_windows=False)
+        else:
+            # Rich panels/rules would otherwise print to the terminal; the file console already records them
+            self.console = Console(file=StringIO())
 
         # Prevent duplicate logs from propagating to the root logger
         self.propagate = False

@@ -8,8 +8,6 @@ import json
 import yaml
 from rich.panel import Panel
 from rich.text import Text
-from rich.live import Live
-from rich.markdown import Markdown
 from collections.abc import AsyncGenerator
 
 from src.tools import AsyncTool
@@ -152,14 +150,11 @@ class GeneralAgent(AsyncMultiStepAgent):
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
 
+                # Deltas are yielded to the caller (CLI / WebSocket) to render; the agent itself only accumulates them
                 chat_message_stream_deltas: list[ChatMessageStreamDelta] = []
-                with Live("", console=self.logger.console, vertical_overflow="visible") as live:
-                    for event in output_stream:
-                        chat_message_stream_deltas.append(event)
-                        live.update(
-                            Markdown(agglomerate_stream_deltas(chat_message_stream_deltas).render_as_markdown())
-                        )
-                        yield event
+                async for event in output_stream:
+                    chat_message_stream_deltas.append(event)
+                    yield event
                 chat_message = agglomerate_stream_deltas(chat_message_stream_deltas)
             else:
                 chat_message: ChatMessage = await self.model(
@@ -168,11 +163,11 @@ class GeneralAgent(AsyncMultiStepAgent):
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
 
-                self.logger.log_markdown(
-                    content=chat_message.content if chat_message.content else str(chat_message.raw),
-                    title="Output message of the LLM:",
-                    level=LogLevel.DEBUG,
-                )
+            self.logger.log_markdown(
+                content=chat_message.content if chat_message.content else str(chat_message.raw or chat_message.tool_calls),
+                title="Output message of the LLM:",
+                level=LogLevel.DEBUG,
+            )
 
             # Record model output
             memory_step.model_output_message = chat_message

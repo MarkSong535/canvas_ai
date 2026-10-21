@@ -37,8 +37,10 @@ canvas_student_agent_config = dict(
     type="general_agent",
     name="canvas_student_agent",
     description="Canvas LMS study assistant that helps manage courses, assignments, discussions, and more",
-    model_id="gpt-6-luna",
+    model_id="gpt-6-luna",  # Must be one of the models registered in src/models/models.py (all <= $5 / 1M tokens)
     max_steps=15,
+    stream_outputs=True,     # Stream model output so the CLI / web UI can render the answer as it is generated
+    max_history_turns=10,    # Multi-turn memory: earlier exchanges kept in context per conversation
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt template path
     
     # Initialize every Canvas tool available to students

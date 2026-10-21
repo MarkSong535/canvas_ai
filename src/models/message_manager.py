@@ -1,23 +1,8 @@
 from typing import Dict, List, Optional, Any
 from copy import deepcopy
 
-from src.models.base import MessageRole, ChatMessage
+from src.models.base import MessageRole, ChatMessage, supports_stop_parameter
 from src.utils import encode_image_base64, make_image_url
-
-DEFAULT_ANTHROPIC_MODELS = [
-    'claude37-sonnet',
-    "claude37-sonnet-thinking",
-]
-UNSUPPORTED_STOP_MODELS = [
-    'gpt-6-luna',
-    'claude37-sonnet',
-    'o4-mini',
-    'o3',
-    'langchain-o3'
-]
-UNSUPPORTED_TOOL_CHOICE_MODELS = [
-    'claude37-sonnet',
-]
 
 class MessageManager():
     def __init__(self, model_id: str, api_type: str = "chat/completions"):
@@ -222,38 +207,21 @@ class MessageManager():
             if not ("nullable" in value and value["nullable"]):
                 required.append(key)
 
-        model_id = model_id.split("/")[-1]
-
-        if model_id in DEFAULT_ANTHROPIC_MODELS:
-            return {
+        return {
+            "type": "function",
+            "function": {
                 "name": tool.name,
                 "description": tool.description,
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": properties,
                     "required": required,
                 },
-            }
-        else:
-            return {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                    },
-                },
-            }
+            },
+        }
 
     def get_clean_completion_kwargs(self, completion_kwargs: Dict[str, Any]):
-
-        model_id = self.model_id.split("/")[-1]
-
-        if model_id in UNSUPPORTED_TOOL_CHOICE_MODELS:
-            completion_kwargs.pop("tool_choice", None)
-        if model_id in UNSUPPORTED_STOP_MODELS:
+        # Reasoning models reject `stop`, even when it arrives via an explicit kwarg override
+        if not supports_stop_parameter(self.model_id):
             completion_kwargs.pop("stop", None)
         return completion_kwargs

@@ -15,6 +15,33 @@ from src.utils import Singleton
 
 PLACEHOLDER = "PLACEHOLDER"
 
+# 单价上限（美元 / 1M tokens），输入和输出价格都不得超过该值
+MAX_PRICE_PER_1M_TOKENS = 5.0
+
+# OpenAI 标准档价格（美元 / 1M tokens，短上下文），来源 developers.openai.com/api/docs/pricing，2026-10 核对
+OPENAI_MODELS = [
+    {"model_id": "gpt-6-luna", "aliases": ["gpt-6-luna", "openai-gpt-6-luna"],
+     "input_price": 0.10, "output_price": 0.50, "kwargs": {"reasoning_effort": "none"}},
+    {"model_id": "gpt-5.6-luna", "aliases": ["gpt-5.6-luna", "openai-gpt-5.6-luna"],
+     "input_price": 0.20, "output_price": 1.20},
+    {"model_id": "gpt-5.4-mini", "aliases": ["gpt-5.4-mini", "openai-gpt-5.4-mini"],
+     "input_price": 0.75, "output_price": 4.50},
+    {"model_id": "gpt-5.4-nano", "aliases": ["gpt-5.4-nano", "openai-gpt-5.4-nano"],
+     "input_price": 0.20, "output_price": 1.25},
+    {"model_id": "gpt-5-mini", "aliases": ["gpt-5-mini", "openai-gpt-5-mini"],
+     "input_price": 0.25, "output_price": 2.00},
+    {"model_id": "gpt-5-nano", "aliases": ["gpt-5-nano", "openai-gpt-5-nano"],
+     "input_price": 0.05, "output_price": 0.40},
+    {"model_id": "gpt-4.1-mini", "aliases": ["gpt-4.1-mini", "openai-gpt-4.1-mini"],
+     "input_price": 0.40, "output_price": 1.60},
+    {"model_id": "gpt-4.1-nano", "aliases": ["gpt-4.1-nano", "openai-gpt-4.1-nano"],
+     "input_price": 0.10, "output_price": 0.40},
+    {"model_id": "gpt-4o-mini", "aliases": ["gpt-4o-mini", "openai-gpt-4o-mini"],
+     "input_price": 0.15, "output_price": 0.60},
+    {"model_id": "o4-mini", "aliases": ["o4-mini", "openai-o4-mini"],
+     "input_price": 1.10, "output_price": 4.40},
+]
+
 
 class ModelManager(metaclass=Singleton):
     """模型管理器 - 负责注册和管理可用的模型"""
@@ -83,24 +110,16 @@ class ModelManager(metaclass=Singleton):
         if api_base == PLACEHOLDER:
             api_base = None
 
-        openai_models = [
-            {"model_id": "gpt-6-luna", "aliases": ["gpt-6-luna", "openai-gpt-6-luna"], "kwargs": {"reasoning_effort": "none"}},
-            {"model_id": "gpt-5", "aliases": ["openai-gpt-5", "gpt-5"]},
-            {"model_id": "gpt-5-mini", "aliases": ["openai-gpt-5-mini"]},
-            {"model_id": "gpt-5-nano", "aliases": ["openai-gpt-5-nano"]},
-            {"model_id": "gpt-4o-mini", "aliases": ["openai-gpt-4o-mini", "gpt-4o-mini"]},
-            {"model_id": "gpt-4o", "aliases": ["openai-gpt-4o", "gpt-4o"]},
-            {"model_id": "gpt-4.1-mini", "aliases": ["openai-gpt-4.1-mini"]},
-            {"model_id": "gpt-4.1", "aliases": ["openai-gpt-4.1"]},
-            {"model_id": "o1-mini", "aliases": ["openai-o1-mini"]},
-            {"model_id": "o1-preview", "aliases": ["openai-o1-preview"]},
-        ]
-
         registered = 0
 
-        for model_config in openai_models:
+        for model_config in OPENAI_MODELS:
             model_id = model_config["model_id"]
             aliases = model_config.get("aliases", []) or [model_id]
+
+            # 价格上限保护：输入或输出单价超过上限的模型一律不注册
+            if max(model_config["input_price"], model_config["output_price"]) > MAX_PRICE_PER_1M_TOKENS:
+                logger.warning(f"模型 {model_id} 单价超过 ${MAX_PRICE_PER_1M_TOKENS}/1M tokens，跳过注册")
+                continue
 
             try:
                 model = OpenAIServerModel(

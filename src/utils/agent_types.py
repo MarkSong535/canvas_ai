@@ -243,12 +243,6 @@ class AgentAudio(AgentType, str):
 _AGENT_TYPE_MAPPING = {"string": AgentText, "image": AgentImage, "audio": AgentAudio}
 
 
-def handle_agent_input_types(*args, **kwargs):
-    args = [(arg.to_raw() if isinstance(arg, AgentType) else arg) for arg in args]
-    kwargs = {k: (v.to_raw() if isinstance(v, AgentType) else v) for k, v in kwargs.items()}
-    return args, kwargs
-
-
 def handle_agent_output_types(output, output_type=None):
     if output_type in _AGENT_TYPE_MAPPING:
         # If the class has defined outputs, we can map directly according to the class definition
@@ -275,6 +269,5 @@ __all__ = [
     "AgentImage",
     "AgentText",
     "AgentAudio",
-    "handle_agent_input_types",
     "handle_agent_output_types",
 ]

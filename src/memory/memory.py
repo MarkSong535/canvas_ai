@@ -200,6 +200,14 @@ class AgentMemory:
     def reset(self):
         self.steps = []
 
+    def keep_last_tasks(self, n: int):
+        """Drop the oldest turns so that at most `n` tasks (and the steps that followed each) remain."""
+        task_indices = [i for i, step in enumerate(self.steps) if isinstance(step, TaskStep)]
+        if n <= 0:
+            self.steps = []
+        elif len(task_indices) > n:
+            self.steps = self.steps[task_indices[-n]:]
+
     def get_succinct_steps(self) -> list[dict]:
         return [
             {key: value for key, value in step.dict().items() if key != "model_input_messages"} for step in self.steps

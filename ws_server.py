@@ -9,7 +9,7 @@ import os
 import secrets
 import ssl
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 from dotenv import load_dotenv
@@ -18,10 +18,13 @@ from websockets.server import WebSocketServerProtocol, serve
 
 import file_index_downloader
 from configs.canvas_agent_config import agent_config
+from src.agent.stream_events import stream_agent_events
 from src.models import model_manager
 from src.registry import AGENT
 
 load_dotenv()
+
+SendFn = Callable[[Dict[str, Any]], Awaitable[None]]
 
 _AGENT_CACHE = None
 AUTH_PASSWORD = os.getenv("CANVAS_WS_SECRET", "canvas-agent-password")
@@ -103,6 +106,8 @@ async def build_agent() -> Any:
         model=model,
         tools=agent_config["tools"],
         max_steps=agent_config["max_steps"],
+        stream_outputs=agent_config.get("stream_outputs", False),
+        max_history_turns=agent_config.get("max_history_turns"),
         name=agent_config.get("name"),
         description=agent_config.get("description"),
     )
@@ -111,16 +116,32 @@ async def build_agent() -> Any:
     return _AGENT_CACHE
 
 
-async def handle_agent_query(message: Dict[str, Any]) -> Dict[str, Any]:
-    """Process a chat payload through the Canvas agent."""
+async def handle_agent_query(message: Dict[str, Any], send: SendFn) -> Dict[str, Any]:
+    """Process a chat payload through the Canvas agent, streaming progress through `send`.
+
+    Streams `{"type": "tool", "name"}`, `{"type": "delta", "text"}` and `{"type": "retract"}` frames while
+    the agent works; the returned `{"type": "answer", "answer"}` frame is the authoritative final reply.
+    """
     agent = await build_agent()
 
     query = message.get("query")
     if not isinstance(query, str) or not query.strip():
         return {"error": "Payload must include a non-empty 'query' field."}
 
-    result = await agent.run(query)
-    return {"answer": str(result)}
+    answer = ""
+    # reset=False: the agent keeps this connection's earlier exchanges (memory is cleared per connection)
+    async for event in stream_agent_events(agent, query, reset=False):
+        if event["type"] == "final":
+            answer = event["answer"]
+        else:
+            await send(event)
+    return {"type": "answer", "answer": answer}
+
+
+async def reset_conversation() -> None:
+    """Forget earlier exchanges so the next chat message starts a new conversation."""
+    agent = await build_agent()
+    agent.memory.reset()
 
 
 async def fetch_course_catalog() -> List[Dict[str, Any]]:
@@ -241,14 +262,19 @@ async def handle_download_request(
 
 async def handle_message(
     message: Dict[str, Any],
-    pending_courses: Optional[List[Dict[str, Any]]]
+    pending_courses: Optional[List[Dict[str, Any]]],
+    send: SendFn,
 ) -> Tuple[Dict[str, Any], Optional[List[Dict[str, Any]]]]:
     """Route messages to the appropriate handler based on type."""
 
     message_type = message.get("type") or "chat"
 
     if message_type in {"chat", "query"}:
-        return await handle_agent_query(message), pending_courses
+        return await handle_agent_query(message, send), pending_courses
+
+    if message_type == "reset":
+        await reset_conversation()
+        return {"status": "reset"}, pending_courses
 
     if message_type == "download":
         return await handle_download_request(message, pending_courses)
@@ -403,7 +429,12 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
             return
         ACTIVE_WEBSOCKET = websocket
 
+    async def send(frame: Dict[str, Any]) -> None:
+        await websocket.send(json.dumps(frame))
+
     try:
+        # Each connection is its own conversation
+        await reset_conversation()
         await websocket.send(json.dumps({"status": "verified"}))
         async for raw_message in websocket:
             # Check if session duration has been exceeded
@@ -422,7 +453,7 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
                 continue
 
             try:
-                response, pending_courses = await handle_message(payload, pending_courses)
+                response, pending_courses = await handle_message(payload, pending_courses, send)
             except Exception as exc:
                 pending_courses = None
                 response = {"error": str(exc)}
