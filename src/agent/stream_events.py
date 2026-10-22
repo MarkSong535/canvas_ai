@@ -6,6 +6,7 @@ tool-call *arguments* (partial JSON). This module decodes the `answer` string ou
 as it grows, so front ends can render the reply token by token.
 
 Events (plain dicts, JSON-serializable):
+    {"type": "route", "tier": str}      the model tier this question was routed to (only with a router)
     {"type": "tool", "name": str}       a non-final tool is being called
     {"type": "delta", "text": str}      more answer text
     {"type": "retract"}                 the answer streamed in this step was rejected; clear it
@@ -16,6 +17,7 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from src.agent.routing import ConversationRouting, apply_route, assess_turn, drop_last_turn, routing_state
 from src.memory import ActionStep, FinalAnswerStep
 from src.models import ChatMessageStreamDelta, ChatMessageToolCall
 
@@ -69,8 +71,27 @@ def partial_json_string_value(raw: str, key: str) -> str | None:
     return "".join(out)
 
 
-async def stream_agent_events(agent: Any, task: str, reset: bool = False) -> AsyncGenerator[dict]:
-    """Run `agent` on `task` and yield UI events. `reset=False` keeps the conversation history."""
+async def stream_agent_events(agent: Any, task: str, reset: bool = False, tier: str | None = None) -> AsyncGenerator[dict]:
+    """Run `agent` on `task` and yield UI events. `reset=False` keeps the conversation history.
+
+    When the agent has a `router`, the question is routed once, before the run, to a model tier (or to `tier`
+    when given): a {"type": "route", "tier"} event comes first, and the final event adds `tier`,
+    `can_escalate` (the run struggled and a higher tier exists; only the user may accept) and `struggled`.
+    """
+    router = getattr(agent, "router", None)
+    route = None
+    if router is not None:
+        if reset:
+            agent.routing_state = ConversationRouting()
+        state = routing_state(agent)
+        if tier:
+            route = router.route_for_tier(tier, "requested by the user")
+        else:
+            route = await router.choose(task, state.route, state.question)
+        apply_route(agent, route)
+        state.question, state.route = task, route
+        yield {"type": "route", "tier": route.tier}
+
     # Tool calls being streamed in the current step, keyed by their stream index
     calls: dict[int, dict] = {}
     streamed_answer = False
@@ -102,4 +123,22 @@ async def stream_agent_events(agent: Any, task: str, reset: bool = False) -> Asy
             calls = {}
             streamed_answer = False
         elif isinstance(event, FinalAnswerStep):
-            yield {"type": "final", "answer": _CONTROL_RE.sub("", str(event.output))}
+            final = {"type": "final", "answer": _CONTROL_RE.sub("", str(event.output))}
+            if route is not None:
+                assessment = assess_turn(agent, final["answer"], route, router)
+                final.update(tier=route.tier, can_escalate=assessment.can_escalate, struggled=assessment.struggled)
+            yield final
+
+
+async def escalate_events(agent: Any) -> AsyncGenerator[dict]:
+    """Retry the conversation's last question one tier up. Only ever called on the user's request."""
+    router = getattr(agent, "router", None)
+    state = routing_state(agent)
+    next_tier = router.next_tier(state.route.tier) if router is not None and state.route else None
+    if not next_tier or not state.question:
+        yield {"type": "final", "answer": "There's no earlier answer that can be retried with deeper reasoning.",
+               "can_escalate": False}
+        return
+    drop_last_turn(agent)  # the retry replaces the struggling attempt instead of following it
+    async for event in stream_agent_events(agent, state.question, tier=next_tier):
+        yield event

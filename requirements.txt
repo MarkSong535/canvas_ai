@@ -16,8 +16,13 @@ rich>=13.0.0
 
 # Tool integrations
 websockets>=12.0
-pyotp>=2.9.0
 json5
+
+# Reading course files' text (src/utils/file_text.py)
+pypdf
+python-docx
+python-pptx
+openpyxl
 
 # Agent output types (src/utils/agent_types.py)
 Pillow

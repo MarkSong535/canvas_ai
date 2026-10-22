@@ -449,6 +449,20 @@
         opacity: 0.4;
         cursor: default;
       }
+      .escalate-btn {
+        margin-top: 12px;
+        font-family: inherit;
+        font-size: 12px;
+        color: var(--accent);
+        background: var(--accent-dim);
+        border: 1px solid rgba(74, 158, 255, 0.35);
+        padding: 6px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+      }
+      .escalate-btn:hover {
+        border-color: var(--accent);
+      }
       .empty {
         flex: 1;
         display: flex;
@@ -983,7 +997,6 @@
       }
 
       // AI replies: Markdown (marked) + LaTeX (KaTeX), sanitized with DOMPurify.
-      // Falls back to plain text if a library failed to load.
       const RICH_OK = !!(window.marked && window.DOMPurify && window.katex);
       if (RICH_OK) {
         marked.setOptions({ gfm: true, breaks: true });
@@ -1351,6 +1364,29 @@
         scrollBottom();
       }
 
+      // The server never escalates on its own; when an answer struggled it offers a retry and the user decides
+      function addEscalateOffer() {
+        const last = [...messagesEl.querySelectorAll(".msg.ai")].at(-1);
+        if (!last) return;
+        const btn = document.createElement("button");
+        btn.className = "escalate-btn";
+        btn.type = "button";
+        btn.textContent = "Try again with deeper reasoning";
+        btn.onclick = () => {
+          if (pending || !connected) return;
+          last.remove(); // the retry replaces this attempt, as it does in the agent's memory
+          showTyping();
+          pending = true;
+          updateBtn();
+          ws.send(JSON.stringify({ type: "escalate" }));
+        };
+        last.querySelector(".msg-body").appendChild(btn);
+      }
+
+      function clearEscalateOffers() {
+        messagesEl.querySelectorAll(".escalate-btn").forEach((btn) => btn.remove());
+      }
+
       function newChat() {
         if (pending || !connected) return;
         ws.send(JSON.stringify({ type: "reset" }));
@@ -1447,8 +1483,14 @@
             return;
           }
 
+          if (d.type === "route") {
+            if (d.tier === "hard") setStreamStatus("Reasoning carefully…");
+            return;
+          }
+
           if (typeof d.answer === "string") {
             finishStream(d.answer, d.renders);
+            if (d.can_escalate) addEscalateOffer();
             pending = false;
             updateBtn();
             return;
@@ -1473,6 +1515,7 @@
       function sendMessage() {
         const text = inputEl.value.trim();
         if (!text || pending || !connected) return;
+        clearEscalateOffers();
         addUserMsg(text);
         showTyping();
         pending = true;

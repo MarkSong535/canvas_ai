@@ -1,6 +1,6 @@
 """
-工具模块 - 最小化版本
-仅包含核心工具基类和 final_answer 工具
+Tools module (minimal version).
+Contains only the core tool base classes and the final_answer tool.
 """
 
 from src.tools.tools import Tool, ToolResult, AsyncTool, make_tool_instance

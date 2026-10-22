@@ -20,7 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# 虚拟环境
+# Virtual environments
 venv/
 env/
 ENV/
@@ -33,19 +33,19 @@ ENV/
 *.swo
 *~
 
-# 环境变量
+# Environment variables
 .env
 .env.local
 
-# 日志和工作目录
+# Logs and working directories
 workdir/
 *.log
 
-# 操作系统
+# Operating system files
 .DS_Store
 Thumbs.db
 
-# 测试
+# Tests
 .pytest_cache/
 .coverage
 htmlcov/

@@ -144,7 +144,9 @@ load_dotenv()
 from src.models import model_manager
 from src.registry import AGENT
 from src.logger import logger
-from src.agent.stream_events import stream_agent_events
+from src.agent.routing import ConversationRouting, build_router
+from src.agent.stream_events import escalate_events, stream_agent_events
+from src import canvas_sandbox
 
 
 console = Console()
@@ -171,6 +173,7 @@ def print_help():
 
     [yellow]help[/yellow]     - Show this guide
     [yellow]new[/yellow]      - Start a new conversation (forget earlier messages)
+    [yellow]deeper[/yellow]   - Retry the last question with a stronger model
     [yellow]clear[/yellow]    - Clear the terminal window
     [yellow]examples[/yellow] - Show sample prompts
     [yellow]status[/yellow]   - Check Canvas connectivity
@@ -355,7 +358,8 @@ async def initialize_agent():
 
         # Build the agent via the registry
         agent = AGENT.build(agent_build_config)
-        
+        agent.router = build_router(agent_config)
+
         console.print(f"[bold green]✓ Agent initialized successfully![/bold green]")
         console.print(f"[green]Loaded {len(agent_config['tools'])} Canvas API tools[/green]\n")
         
@@ -366,11 +370,16 @@ async def initialize_agent():
         return None
 
 
-async def process_query(agent, query: str):
-    """Handle a single user query, rendering the answer live as it streams in."""
+async def process_query(agent, query: str | None, events=None):
+    """Handle a single user query, rendering the answer live as it streams in.
+
+    `events` replaces the normal run, e.g. escalate_events(agent) when the user asks for a deeper retry.
+    """
     tools_used: list[str] = []
     answer = ""
     status = "Thinking…"
+    tier = ""
+    final: dict = {}
 
     def render():
         parts = []
@@ -380,14 +389,17 @@ async def process_query(agent, query: str):
             parts.append(Markdown(answer))
         else:
             parts.append(Spinner("dots", text=Text(status, style="cyan")))
-        return Panel(Group(*parts), title="💡 Answer", title_align="left", border_style="green")
+        title = "💡 Answer" + (f" · {tier}" if tier else "")
+        return Panel(Group(*parts), title=title, title_align="left", border_style="green")
 
     try:
         console.print()
         with Live(render(), console=console, refresh_per_second=12, vertical_overflow="visible") as live:
             # reset=False keeps earlier exchanges in the agent's memory (multi-turn conversation)
-            async for event in stream_agent_events(agent, query, reset=False):
-                if event["type"] == "tool":
+            async for event in events or stream_agent_events(agent, query, reset=False):
+                if event["type"] == "route":
+                    tier = event["tier"]
+                elif event["type"] == "tool":
                     tools_used.append(event["name"])
                     status = f"Calling {event['name']}…"
                 elif event["type"] == "delta":
@@ -397,7 +409,14 @@ async def process_query(agent, query: str):
                     status = "Retrying…"
                 elif event["type"] == "final":
                     answer = event["answer"]
+                    final = event
                 live.update(render())
+
+        # Never escalate on our own: offer it, and let the user decide
+        if final.get("can_escalate"):
+            reasons = ", ".join(final.get("struggled") or [])
+            console.print(f"[yellow]This one looked hard ({reasons}). "
+                          f"Type [bold]deeper[/bold] to retry it with a stronger model.[/yellow]")
 
     except Exception as e:
         console.print(f"\n[bold red]✗ Error while processing the query: {str(e)}[/bold red]\n")
@@ -410,7 +429,14 @@ async def main():
     print_banner()
     
     console.print("\n[cyan]Starting up...[/cyan]")
-    
+
+    # Sandbox mode
+    try:
+        await canvas_sandbox.start(log=lambda message: console.print(f"[magenta]{message}[/magenta]"))
+    except Exception as e:
+        console.print(f"[bold red]Canvas sandbox failed to start: {e}[/bold red]")
+        return
+
     # Initialize the agent
     agent = await initialize_agent()
     
@@ -465,8 +491,13 @@ async def main():
 
             elif command == "new":
                 agent.memory.reset()
+                agent.routing_state = ConversationRouting()
                 conversation_count = 0
                 console.print("[green]✓ Started a new conversation.[/green]")
+                continue
+
+            elif command == "deeper":
+                await process_query(agent, None, events=escalate_events(agent))
                 continue
             
             # Handle standard queries

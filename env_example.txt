@@ -13,14 +13,30 @@ CANVAS_URL=https://instituation.instructure.com/
 CANVAS_ACCESS_TOKEN=your_canvas_access_token_here
 
 # WebSocket Server Config
-CANVAS_WS_SECRET=your_websocket_secret_here
-CANVAS_WS_TOTP_SECRET=your_totp_secret_here
-CANVAS_WS_TOTP_DISABLED=false
+# Clients must pass a Cloudflare Turnstile check: the page's widget token is verified with this secret,
+# and Cloudflare must report one of these hostnames and this action
+TURNSTILE_SECRET=your_turnstile_secret_key_here
+TURNSTILE_HOSTNAMES=markso.ng
+TURNSTILE_ACTION=canvas_ws
 
 WSS_ENABLED=true
 WSS_CERTFILE=your_certfile_here
-WSS_KEYFILE=your_keyfile_here 
-CANVAS_WS_URI=wss://your_domain.com:8765
+WSS_KEYFILE=your_keyfile_here
 
 # Max duration of a session in minutes
 SESSION_DURATION=10
+
+# Canvas sandbox: yes = on start, fetch everything from Canvas once (all data and every file) into a local copy,
+# then answer every Canvas call from it. Writes (submissions, discussion replies, ...) are recorded locally and
+# never sent to Canvas. Manual refresh: python -m src.canvas_sandbox sync
+CANVAS_SANDBOX=no
+CANVAS_SANDBOX_DIR=workdir/canvas_sandbox
+# yes = re-fetch everything from Canvas on the next start
+CANVAS_SANDBOX_REFRESH=no
+# In sandbox mode only the capture step uses CANVAS_URL / CANVAS_ACCESS_TOKEN above; serving runs on simulated ones.
+# Sandbox file links: public base URL they use (its /files/ path must reach the files-only server),
+# where that server listens (0.0.0.0 inside Docker), and how long a link stays valid
+CANVAS_SANDBOX_PUBLIC_URL=https://canvas.marksong.tech
+CANVAS_SANDBOX_FILES_HOST=127.0.0.1
+CANVAS_SANDBOX_FILES_PORT=8766
+CANVAS_SANDBOX_LINK_TTL_HOURS=168

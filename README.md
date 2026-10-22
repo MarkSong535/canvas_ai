@@ -11,8 +11,8 @@ An OpenAI-powered ReAct Agent for Canvas LMS companion tailored for student acco
 - Student-safe Canvas API coverage with 20+ tools for courses, assignments, files, discussions, grades, and calendar data.
 - Rich-powered command line chat experience (`canvas_chat.py`).
 - Bulk file synchronization (`file_index_downloader.py`) with optional OpenAI Vector Store uploads.
-- WebSocket bridge (`ws_server.py`) that exposes agent chat and download workflows with password + TOTP authentication.
-- Example clients (`ws_test.py`, scripts in `examples/`) demonstrating common workflows.
+- WebSocket bridge (`ws_server.py`) that exposes agent chat and download workflows to the web page (`frontend/index.html`), gated by Cloudflare Turnstile.
+- End-to-end tests (`tests/`) and example scripts (`examples/`).
 
 ---
 
@@ -23,7 +23,8 @@ canvas_ai/
 ├── canvas_chat.py            # Interactive console entry point
 ├── file_index_downloader.py  # Bulk download + optional vector store upload
 ├── ws_server.py              # Authenticated WebSocket bridge
-├── ws_test.py                # Example sync WebSocket client
+├── frontend/index.html       # Web chat page (Turnstile + WebSocket)
+├── tests/                    # End-to-end tests (fake model, no network)
 ├── configs/
 │   └── canvas_agent_config.py
 ├── src/
@@ -61,16 +62,15 @@ OPENAI_API_KEY=sk-your-key
 CANVAS_URL=https://instituation.instructure.com/
 CANVAS_ACCESS_TOKEN=your_canvas_access_token_here
 
-# WebSocket Server Config
-CANVAS_WS_SECRET=your_websocket_secret_here
-CANVAS_WS_TOTP_SECRET=your_totp_secret_here
-CANVAS_WS_TOTP_DISABLED=false
+# WebSocket Server Config (Cloudflare Turnstile)
+TURNSTILE_SECRET=your_turnstile_secret_key_here
+TURNSTILE_HOSTNAMES=markso.ng
+TURNSTILE_ACTION=canvas_ws
 
 # WSS Config
 WSS_ENABLED=true
 WSS_CERTFILE=your_certfile_here
 WSS_KEYFILE=your_keyfile_here 
-CANVAS_WS_URI=wss://your_domain.com:8765
 
 # Max duration of a session in minutes
 SESSION_DURATION=10
@@ -81,8 +81,6 @@ SESSION_DURATION=10
 > 2. Click **+ New Access Token**
 > 3. Add a description and (optionally) an expiration
 > 4. Generate and copy the token immediately
-
-For TOTP secrets you can use any authenticator app or `pyotp.random_base32()`.
 
 ---
 
@@ -156,11 +154,11 @@ Start the server (after configuring `.env`):
 python ws_server.py
 ```
 
-Authentication flow:
+Connection flow:
 
-1. Client opens a WebSocket connection to `ws://host:port`
-2. Client sends `{ "type": "auth", "password": "...", "totp": "123456" }`
-3. Server verifies the secret and replies `{ "status": "authenticated" }`
+1. The page opens a WebSocket from `https://markso.ng` (other origins are refused at the handshake)
+2. Its first frame, within 15 seconds, is `{ "type": "verify", "token": "<Turnstile token>" }`; the server checks the token with Cloudflare (`TURNSTILE_*` settings)
+3. Server replies `{ "status": "verified" }`. Only one connection is active at a time, and it closes after `SESSION_DURATION` minutes
 4. Subsequent messages can be:
 	 - Chat: `{ "type": "chat", "query": "List my courses" }`. The reply streams back as several frames:
 		 - `{ "type": "tool", "name": "canvas_list_courses" }` while the agent calls a Canvas tool
@@ -175,17 +173,33 @@ Authentication flow:
 		 - Client selects -> `{ "type": "download", "course_indices": [1,3], "auto_confirm": true }`
 		 - Server streams the final status and statistics
 
-### Example client
+Turnstile tokens come from the browser widget, so the server can't be driven from a script. To exercise it without a browser, run the tests below; they call the same message handler directly.
+
+---
+
+## Canvas Sandbox Mode
+
+Set `CANVAS_SANDBOX=yes` in `.env` to run against a local copy of Canvas instead of the live site:
+
+1. On start (or with `python -m src.canvas_sandbox sync`), if no complete sandbox exists yet, everything the tools could ask for is fetched with your access token. That covers courses in every enrollment state, assignments, modules, files and folders, pages, discussions, announcements across each course's history, quizzes, grades, the calendar, to-dos and groups. Every file is downloaded too, including files only linked from modules or page HTML.
+2. A local Canvas look-alike then starts on `127.0.0.1` and `CANVAS_URL` is pointed at it, so the tools, the file downloader and the course picker are all answered locally. Errors Canvas returned are replayed as-is, and file search, calendar date ranges and multi-course announcements are filtered locally.
+3. Writes never reach Canvas. The agent always has the submit-assignment and post-discussion tools, but the tools' request layer only lets a non-GET request through to the running local sandbox. There it's recorded in `writes.jsonl` and shows up in later reads. In live mode the request is blocked before anything is sent, and the agent tells the student to do it in Canvas.
+
+4. Files are served by this platform, never by Canvas. Every Canvas file link in sandbox responses is rewritten to a signed, expiring link like `https://canvas.marksong.tech/files/<id>/<name>?expires=…&sig=…`. That covers file objects, module items, and links inside page, assignment and announcement HTML. Set `CANVAS_SANDBOX_PUBLIC_URL` to the public domain, and route its `/files/` path to `CANVAS_SANDBOX_FILES_PORT` (on `oci`, a Cloudflare Tunnel ingress rule). That port runs a files-only server, while the sandbox's API stays on loopback. Links last `CANVAS_SANDBOX_LINK_TTL_HOURS` (7 days by default) and are signed with `CANVAS_SANDBOX_LINK_SECRET`, which defaults to a random key stored in the sandbox folder.
+5. Only the capture step uses the real `CANVAS_URL` and `CANVAS_ACCESS_TOKEN`. Once the sandbox starts, the process switches to the local server's URL and a simulated token that only the local server accepts; the real token gets a 401. Serving an existing sandbox needs no real credentials at all: on `oci` the production container runs with placeholders, and only the capture container (`python -m src.canvas_sandbox sync`) gets the real ones.
+
+Everything lives in `CANVAS_SANDBOX_DIR` (default `workdir/canvas_sandbox`): `responses.json`, `files/`, `writes.jsonl`, and `requests.jsonl` (every request served, and whether it was a captured hit, filtered locally, a recorded write or not captured). `python -m src.canvas_sandbox status` summarizes it; set `CANVAS_SANDBOX_REFRESH=yes` or run `sync` again to re-fetch.
+
+---
+
+## Tests
 
 ```bash
-# Chat mode
-python ws_test.py
-
-# Download mode (make sure CANVAS_WS_TEST_* envs are set)
-python ws_test.py download
+pip install pytest
+pytest tests
 ```
 
-The test client authenticates once per session and prints responses to stdout. In download mode it displays the course roster before sending the follow-up selection.
+The end-to-end tests use a scripted fake OpenAI client, so they need no API key, Canvas account or network. They cover the model price cap, streaming, multi-turn memory, native tool-call history, the repeated-call guard, the WebSocket message handler (chat, `reset`), the terminal chat panel, and LaTeX extraction. Rendering tests also compile real LaTeX when `latex` and `dvisvgm` are installed, and are skipped otherwise. `python tests/test_end_to_end.py` runs them without pytest.
 
 ---
 
@@ -199,7 +213,7 @@ The test client authenticates once per session and prints responses to stdout. I
 
 ## Troubleshooting
 
-- **Authentication failed** → Verify `CANVAS_WS_SECRET` and `CANVAS_WS_TOTP_SECRET`; update your authenticator if the TOTP window drifts.
+- **Verification failed** → Check `TURNSTILE_SECRET` matches the page's site key, and that the page's hostname is in `TURNSTILE_HOSTNAMES`.
 - **Missing dependencies** → Re-run `pip install -r requirements.txt`.
 - **Canvas 401 errors** → Regenerate your Canvas access token or confirm the URL points to the correct subdomain.
 - **Vector store upload errors** → Ensure `openai>=1.20.0` and that your account has Assistants v2 access.

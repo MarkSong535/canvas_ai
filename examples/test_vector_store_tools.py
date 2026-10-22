@@ -80,7 +80,7 @@ async def test_vector_store_search(vector_store_id: str = None):
         "Agent-Based Modeling"
     ]
     
-    console.print(f"\n✓ 使用 Vector Store: {vector_store_id}", style="green")
+    console.print(f"\n✓ Using vector store: {vector_store_id}", style="green")
     console.print("\n📝 Sample queries:", style="cyan bold")
     for i, query in enumerate(test_queries, 1):
         console.print(f"  {i}. {query}", style="dim")

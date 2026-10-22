@@ -7,16 +7,17 @@ Defines an agent tailored for student access to Canvas LMS with the complete Can
 from src.tools.canvas_tools import (
     CanvasListCourses,
     CanvasGetAssignments,
-    # CanvasSubmitAssignment,
+    CanvasSubmitAssignment,
     CanvasGetModules,
     CanvasGetModuleItems,
     CanvasGetFiles,
     CanvasGetFileInfo,
+    CanvasReadFile,
     CanvasGetFolders,
     CanvasGetFolderFiles,
     CanvasSearchFiles,
     CanvasGetDiscussions,
-    # CanvasPostDiscussion,
+    CanvasPostDiscussion,
     CanvasGetAnnouncements,
     CanvasGetCalendarEvents,
     CanvasGetGrades,
@@ -42,22 +43,29 @@ canvas_student_agent_config = dict(
     max_steps=15,
     stream_outputs=True,     # Stream model output so the CLI / web UI can render the answer as it is generated
     max_history_turns=10,    # Multi-turn memory: earlier exchanges kept in context per conversation
+    # Each question is routed once, before the agent starts, to a tier by difficulty (src/agent/routing.py).
+    # If an answer struggled, the user is offered a retry one tier up; nothing escalates on its own.
+    routing=dict(
+        tiers={"simple": "gpt-5-nano", "standard": "gpt-6-luna", "hard": "gpt-5.4-mini"},
+        classifier_model_id="gpt-5-nano",
+    ),
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt template path
     
     # Initialize every Canvas tool available to students
     tools=[
         CanvasListCourses(),              # List enrolled courses
         CanvasGetAssignments(),           # Retrieve assignments
-        # CanvasSubmitAssignment(),         # Submit an assignment
+        CanvasSubmitAssignment(),         # Submit an assignment (never reaches live Canvas: blocked, or recorded in sandbox)
         CanvasGetModules(),               # Retrieve course modules
         CanvasGetModuleItems(),           # Retrieve module items
         CanvasGetFiles(),                 # List course files
         CanvasGetFileInfo(),              # Retrieve file details
+        CanvasReadFile(),                 # Read a file's text (sandbox: from the downloaded copy)
         CanvasGetFolders(),               # List folders
         CanvasGetFolderFiles(),           # List files inside a folder
         CanvasSearchFiles(),              # Search files by keyword
         CanvasGetDiscussions(),           # Retrieve discussions
-        # CanvasPostDiscussion(),           # Post a discussion reply
+        CanvasPostDiscussion(),           # Post a discussion reply (never reaches live Canvas: blocked, or recorded in sandbox)
         CanvasGetAnnouncements(),         # Retrieve announcements
         CanvasGetCalendarEvents(),        # Retrieve calendar events
         CanvasGetGrades(),                # Retrieve grades

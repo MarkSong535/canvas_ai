@@ -56,7 +56,7 @@ class AgentLogger(logging.Logger, metaclass=Singleton):
             console_handler = logging.StreamHandler()
             console_handler.setLevel(level)
             console_handler.setFormatter(self.formatter)
-            # 设置控制台输出编码
+            # Set the console output encoding
             if hasattr(console_handler.stream, 'reconfigure'):
                 try:
                     console_handler.stream.reconfigure(encoding='utf-8')
@@ -72,7 +72,7 @@ class AgentLogger(logging.Logger, metaclass=Singleton):
         file_handler.setFormatter(self.formatter)
         self.addHandler(file_handler)
 
-        # 设置Rich控制台，确保支持UTF-8和emoji
+        # Set up the Rich console with UTF-8 and emoji support
         self.file_console = Console(
             file=open(log_path, "a", encoding="utf-8"),
             width=100,

@@ -1,8 +1,3 @@
-"""
-模型管理器 - 最小化版本
-仅支持 OpenAI 官方模型
-"""
-
 import os
 from typing import Dict, Any
 from dotenv import load_dotenv
@@ -15,10 +10,10 @@ from src.utils import Singleton
 
 PLACEHOLDER = "PLACEHOLDER"
 
-# 单价上限（美元 / 1M tokens），输入和输出价格都不得超过该值
+# Price cap (USD per 1M tokens): neither the input nor the output price may exceed it
 MAX_PRICE_PER_1M_TOKENS = 5.0
 
-# OpenAI 标准档价格（美元 / 1M tokens，短上下文），来源 developers.openai.com/api/docs/pricing，2026-10 核对
+# OpenAI standard-tier prices
 OPENAI_MODELS = [
     {"model_id": "gpt-6-luna", "aliases": ["gpt-6-luna", "openai-gpt-6-luna"],
      "input_price": 0.10, "output_price": 0.50, "kwargs": {"reasoning_effort": "none"}},
@@ -44,33 +39,33 @@ OPENAI_MODELS = [
 
 
 class ModelManager(metaclass=Singleton):
-    """模型管理器 - 负责注册和管理可用的模型"""
+    """Model manager: registers and looks up the available models."""
     
     def __init__(self):
         self.registed_models: Dict[str, Any] = {}
         
     def init_models(self, use_local_proxy: bool = False) -> int:
-        """初始化所有模型（当前仅支持 OpenAI 官方接口）"""
+        """Register all models (currently only the official OpenAI API)."""
 
-        # 重新初始化时先清空，保证配置变更即时生效
+        # Clear first when re-initializing, so configuration changes take effect immediately
         self.registed_models.clear()
 
         registered_count = self._register_openai_models(use_local_proxy=use_local_proxy)
 
         if registered_count == 0:
             logger.error("=" * 70)
-            logger.error("未检测到可用的大模型配置！")
+            logger.error("No usable LLM configuration found!")
             logger.error("=" * 70)
-            logger.error("请在 .env 中至少配置以下任一项：")
-            logger.error("- OPENAI_API_KEY (+ 可选 OPENAI_BASE_URL / OPENAI_ORGANIZATION / OPENAI_PROJECT)")
+            logger.error("Configure at least one of the following in .env:")
+            logger.error("- OPENAI_API_KEY (+ optional OPENAI_BASE_URL / OPENAI_ORGANIZATION / OPENAI_PROJECT)")
             logger.error("=" * 70)
-            raise ValueError("模型配置缺失，请检查 .env 文件")
+            raise ValueError("Model configuration missing; check your .env file")
 
         return registered_count
 
     def _register_openai_models(self, use_local_proxy: bool = False) -> int:
-        """注册 OpenAI 官方模型"""
-        logger.info("注册 OpenAI 模型")
+        """Register the official OpenAI models."""
+        logger.info("Registering OpenAI models")
 
         if use_local_proxy:
             api_key = self._check_local_api_key("LOCAL_OPENAI_API_KEY", "OPENAI_API_KEY")
@@ -79,14 +74,14 @@ class ModelManager(metaclass=Singleton):
             api_key = os.getenv("OPENAI_API_KEY", PLACEHOLDER)
             api_base = os.getenv("OPENAI_API_BASE", PLACEHOLDER)
 
-        # 兼容其他常见的基础地址环境变量命名
+        # Also accept other common names for the base-URL environment variable
         if api_base == PLACEHOLDER:
             api_base = os.getenv("OPENAI_BASE_URL", PLACEHOLDER)
         if api_base == PLACEHOLDER:
             api_base = os.getenv("OPENAI_API_URL", PLACEHOLDER)
 
         if api_key == PLACEHOLDER:
-            logger.warning("未检测到 OPENAI_API_KEY，跳过 OpenAI 模型注册")
+            logger.warning("OPENAI_API_KEY not found; skipping OpenAI model registration")
             return 0
 
         organization = os.getenv("OPENAI_ORGANIZATION") or os.getenv("OPENAI_ORG")
@@ -98,14 +93,14 @@ class ModelManager(metaclass=Singleton):
             try:
                 client_kwargs["max_retries"] = int(max_retries)
             except ValueError:
-                logger.warning("OPENAI_MAX_RETRIES 不是有效的整数，已忽略该配置")
+                logger.warning("OPENAI_MAX_RETRIES is not a valid integer; ignoring it")
 
         timeout = os.getenv("OPENAI_TIMEOUT")
         if timeout:
             try:
                 client_kwargs["timeout"] = float(timeout)
             except ValueError:
-                logger.warning("OPENAI_TIMEOUT 不是有效的数字，已忽略该配置")
+                logger.warning("OPENAI_TIMEOUT is not a valid number; ignoring it")
 
         if api_base == PLACEHOLDER:
             api_base = None
@@ -116,9 +111,9 @@ class ModelManager(metaclass=Singleton):
             model_id = model_config["model_id"]
             aliases = model_config.get("aliases", []) or [model_id]
 
-            # 价格上限保护：输入或输出单价超过上限的模型一律不注册
+            # Price-cap guard: a model whose input or output price exceeds the cap is never registered
             if max(model_config["input_price"], model_config["output_price"]) > MAX_PRICE_PER_1M_TOKENS:
-                logger.warning(f"模型 {model_id} 单价超过 ${MAX_PRICE_PER_1M_TOKENS}/1M tokens，跳过注册")
+                logger.warning(f"Model {model_id} costs more than ${MAX_PRICE_PER_1M_TOKENS}/1M tokens; not registering it")
                 continue
 
             try:
@@ -131,26 +126,26 @@ class ModelManager(metaclass=Singleton):
                     client_kwargs=client_kwargs or None,
                     **model_config.get("kwargs", {}),
                 )
-            except Exception as exc:  # noqa: BLE001 - 捕获并记录初始化异常
-                logger.error(f"注册 OpenAI 模型 {model_id} 失败: {exc}")
+            except Exception as exc:  # noqa: BLE001 - catch and log initialization errors
+                logger.error(f"Failed to register OpenAI model {model_id}: {exc}")
                 continue
 
             for alias in aliases:
                 if alias in self.registed_models:
-                    logger.debug(f"模型别名 {alias} 已存在，跳过覆盖")
+                    logger.debug(f"Model alias {alias} already exists; not overwriting it")
                     continue
 
                 self.registed_models[alias] = model
                 registered += 1
-                logger.info(f"成功注册 OpenAI 模型: {alias} (ID: {model_id})")
+                logger.info(f"Registered OpenAI model: {alias} (ID: {model_id})")
 
         if registered == 0:
-            logger.warning("没有成功注册任何 OpenAI 模型，请检查模型别名或配置")
+            logger.warning("No OpenAI models were registered; check the model aliases or configuration")
 
         return registered
 
     def _check_local_api_key(self, local_api_key_name: str, remote_api_key_name: str) -> str:
-        """检查本地和远程 API Key"""
+        """Use the local API key if set, else the remote one."""
         api_key = os.getenv(local_api_key_name, PLACEHOLDER)
         if api_key == PLACEHOLDER:
             logger.warning(f"Local API key {local_api_key_name} is not set, using remote API key {remote_api_key_name}")
@@ -158,7 +153,7 @@ class ModelManager(metaclass=Singleton):
         return api_key
     
     def _check_local_api_base(self, local_api_base_name: str, remote_api_base_name: str) -> str:
-        """检查本地和远程 API Base"""
+        """Use the local API base URL if set, else the remote one."""
         api_base = os.getenv(local_api_base_name, PLACEHOLDER)
         if api_base == PLACEHOLDER:
             logger.warning(f"Local API base {local_api_base_name} is not set, using remote API base {remote_api_base_name}")
@@ -166,15 +161,15 @@ class ModelManager(metaclass=Singleton):
         return api_base
 
     def get_model(self, model_name: str):
-        """获取已注册的模型实例"""
+        """Return a registered model instance."""
         if model_name not in self.registed_models:
-            raise ValueError(f"模型 {model_name} 未注册。可用模型: {list(self.registed_models.keys())}")
+            raise ValueError(f"Model {model_name} is not registered. Available models: {list(self.registed_models.keys())}")
         return self.registed_models[model_name]
     
     def list_models(self):
-        """列出所有已注册的模型"""
+        """List all registered models."""
         return list(self.registed_models.keys())
 
 
-# 全局模型管理器实例
+# Global model manager instance
 model_manager = ModelManager()

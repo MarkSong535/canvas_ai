@@ -1,8 +1,3 @@
-"""
-模型模块 - 最小化版本
-包含核心模型类及 OpenAI 支持
-"""
-
 from .base import (
                  ChatMessage,
                  ChatMessageStreamDelta,

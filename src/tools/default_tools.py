@@ -1,10 +1,10 @@
 """
-默认工具 - 最小化版本
-提供一个空的工具映射，用户可以通过配置添加自定义工具
+Default tools (minimal version).
+Provides an empty tool mapping; add custom tools through the configuration.
 """
 
-# 空的工具映射 - 用户可以通过 add_base_tools=False 来避免加载默认工具
-# 或者在这里添加自定义的默认工具
+# Empty tool mapping: set add_base_tools=False to skip loading default tools,
+# or add custom default tools here
 TOOL_MAPPING = {}
 
 __all__ = ["TOOL_MAPPING"]

@@ -166,7 +166,7 @@ python examples/test_vector_store_tools.py
 
 ### Test Script 2: Search Walkthrough
 ```bash
-python test_vector_store_search.py
+python tests/manual/vector_store_search.py
 ```
 
 **Highlights**:

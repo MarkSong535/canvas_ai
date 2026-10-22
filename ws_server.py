@@ -6,19 +6,19 @@ import asyncio
 from copy import deepcopy
 import json
 import os
-import secrets
 import ssl
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 from dotenv import load_dotenv
-import pyotp
 from websockets.server import WebSocketServerProtocol, serve
 
 import file_index_downloader
 from configs.canvas_agent_config import agent_config
-from src.agent.stream_events import stream_agent_events
+from src import canvas_sandbox
+from src.agent.routing import ConversationRouting, build_router
+from src.agent.stream_events import escalate_events, stream_agent_events
 from src.utils import latex_svg
 from src.models import model_manager
 from src.registry import AGENT
@@ -28,15 +28,6 @@ load_dotenv()
 SendFn = Callable[[Dict[str, Any]], Awaitable[None]]
 
 _AGENT_CACHE = None
-AUTH_PASSWORD = os.getenv("CANVAS_WS_SECRET", "canvas-agent-password")
-TOTP_SECRET_ENV = "CANVAS_WS_TOTP_SECRET"
-TOTP_SECRET = os.getenv(TOTP_SECRET_ENV)
-TOTP_DISABLED = os.getenv("CANVAS_WS_TOTP_DISABLED", "false").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
 WSS_ENABLED = os.getenv("WSS_ENABLED", "false").strip().lower() in {
     "1",
     "true",
@@ -45,16 +36,6 @@ WSS_ENABLED = os.getenv("WSS_ENABLED", "false").strip().lower() in {
 }
 WSS_CERTFILE = os.getenv("WSS_CERTFILE")
 WSS_KEYFILE = os.getenv("WSS_KEYFILE")
-
-
-def _parse_session_ttl(raw: Optional[str]) -> int:
-    if raw is None:
-        return 3600
-    try:
-        ttl = int(raw)
-    except (TypeError, ValueError):
-        return 3600
-    return max(ttl, 0)
 
 
 def _parse_session_duration(raw: Optional[str]) -> int:
@@ -68,10 +49,7 @@ def _parse_session_duration(raw: Optional[str]) -> int:
     return max(duration, 1)  # Minimum 1 minute
 
 
-SESSION_TTL_SECONDS = _parse_session_ttl(os.getenv("CANVAS_WS_SESSION_TTL"))
 SESSION_DURATION_MINUTES = _parse_session_duration(os.getenv("SESSION_DURATION"))
-SESSION_STORE: Dict[str, Dict[str, Any]] = {}
-SESSION_LOCK = asyncio.Lock()
 
 # Track the single active WebSocket connection
 ACTIVE_WEBSOCKET: Optional[WebSocketServerProtocol] = None
@@ -114,36 +92,54 @@ async def build_agent() -> Any:
     )
 
     _AGENT_CACHE = AGENT.build(agent_build_config)
+    _AGENT_CACHE.router = build_router(agent_config)
     return _AGENT_CACHE
 
 
 async def handle_agent_query(message: Dict[str, Any], send: SendFn) -> Dict[str, Any]:
     """Process a chat payload through the Canvas agent, streaming progress through `send`.
 
-    Streams `{"type": "tool", "name"}`, `{"type": "delta", "text"}` and `{"type": "retract"}` frames while
-    the agent works; the returned `{"type": "answer", "answer"}` frame is the authoritative final reply.
+    Streams `{"type": "route", "tier"}`, `{"type": "tool", "name"}`, `{"type": "delta", "text"}` and
+    `{"type": "retract"}` frames while the agent works; the returned `{"type": "answer", ...}` frame is the
+    authoritative final reply.
     """
-    agent = await build_agent()
-
     query = message.get("query")
     if not isinstance(query, str) or not query.strip():
         return {"error": "Payload must include a non-empty 'query' field."}
-
-    answer = ""
+    agent = await build_agent()
     # reset=False: the agent keeps this connection's earlier exchanges (memory is cleared per connection)
-    async for event in stream_agent_events(agent, query, reset=False):
+    return await _stream_answer(stream_agent_events(agent, query, reset=False), send)
+
+
+async def handle_escalation(send: SendFn) -> Dict[str, Any]:
+    """The user accepted the offer to retry the last question one tier up."""
+    agent = await build_agent()
+    return await _stream_answer(escalate_events(agent), send)
+
+
+async def _stream_answer(events, send: SendFn) -> Dict[str, Any]:
+    final: Dict[str, Any] = {"answer": ""}
+    async for event in events:
         if event["type"] == "final":
-            answer = event["answer"]
+            final = event
         else:
             await send(event)
-    # Math and ```chemfig blocks are rendered to SVG here; the page swaps each snippet for its SVG by key
-    return {"type": "answer", "answer": answer, "renders": await latex_svg.render_answer(answer)}
+    answer = final["answer"]
+    frame = {"type": "answer", "answer": answer,
+             # Math and ```chemfig blocks are rendered to SVG here; the page swaps each snippet for its SVG by key
+             "renders": await latex_svg.render_answer(answer)}
+    if "tier" in final:
+        frame["tier"] = final["tier"]
+    # Only the user decides whether a struggling answer is retried with a stronger model ({"type": "escalate"})
+    frame["can_escalate"] = bool(final.get("can_escalate"))
+    return frame
 
 
 async def reset_conversation() -> None:
     """Forget earlier exchanges so the next chat message starts a new conversation."""
     agent = await build_agent()
     agent.memory.reset()
+    agent.routing_state = ConversationRouting()
 
 
 async def fetch_course_catalog() -> List[Dict[str, Any]]:
@@ -278,92 +274,13 @@ async def handle_message(
         await reset_conversation()
         return {"status": "reset"}, pending_courses
 
+    if message_type == "escalate":
+        return await handle_escalation(send), pending_courses
+
     if message_type == "download":
         return await handle_download_request(message, pending_courses)
 
     return {"error": f"Unsupported message type: {message_type}"}, pending_courses
-
-
-def authenticate_payload(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
-    """Validate the incoming authentication payload."""
-    password = payload.get("password")
-    totp_code = payload.get("totp")
-
-    if not AUTH_PASSWORD:
-        return False, "Server password is not configured."
-
-    if password != AUTH_PASSWORD:
-        return False, "Invalid password."
-
-    if TOTP_DISABLED:
-        return True, None
-
-    if not isinstance(totp_code, str) or not totp_code.strip():
-        return False, "Missing TOTP code."
-
-    if not TOTP_SECRET:
-        return False, f"Server missing {TOTP_SECRET_ENV}."
-
-    try:
-        totp = pyotp.TOTP(TOTP_SECRET)
-    except (TypeError, ValueError):
-        return False, "Server TOTP secret is invalid."
-    if not totp.verify(totp_code, valid_window=1):
-        return False, "Invalid or expired TOTP code."
-
-    return True, None
-
-
-async def prune_sessions(now: Optional[float] = None) -> None:
-    """Remove expired sessions from the session store."""
-    if SESSION_TTL_SECONDS <= 0:
-        return
-
-    current = now or time.time()
-    async with SESSION_LOCK:
-        expired = [
-            key
-            for key, session in SESSION_STORE.items()
-            if current - session.get("last_seen", current) > SESSION_TTL_SECONDS
-        ]
-        for key in expired:
-            SESSION_STORE.pop(key, None)
-
-
-async def create_session() -> Tuple[str, Dict[str, Any]]:
-    """Create a new reusable session and return its key and data."""
-    await prune_sessions()
-    session_key = secrets.token_urlsafe(32)
-    now = time.time()
-    session_data: Dict[str, Any] = {
-        "created": now,
-        "last_seen": now,
-        "pending_courses": None,
-    }
-
-    async with SESSION_LOCK:
-        SESSION_STORE[session_key] = session_data
-
-    return session_key, session_data
-
-
-async def get_session(session_key: str) -> Optional[Dict[str, Any]]:
-    """Retrieve an existing session if it is still valid."""
-    await prune_sessions()
-    async with SESSION_LOCK:
-        session = SESSION_STORE.get(session_key)
-        if session is None:
-            return None
-        session["last_seen"] = time.time()
-        return session
-
-
-async def update_session(session_key: str, session_data: Dict[str, Any]) -> None:
-    """Persist updated session data back into the store."""
-    session_data["last_seen"] = time.time()
-    async with SESSION_LOCK:
-        if session_key in SESSION_STORE:
-            SESSION_STORE[session_key] = session_data
 
 
 async def verify_turnstile_token(token: Any) -> bool:
@@ -476,6 +393,9 @@ async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:
             raise RuntimeError("WSS_ENABLED requires WSS_CERTFILE and WSS_KEYFILE to be set.")
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_context.load_cert_chain(certfile=WSS_CERTFILE, keyfile=WSS_KEYFILE)
+
+    # CANVAS_SANDBOX=yes: capture Canvas first if needed, then answer every Canvas call locally
+    await canvas_sandbox.start()
 
     async with serve(
         websocket_handler,
