@@ -57,3 +57,4 @@ dockerfile
 *.pem
 .gitignore
 *.key
+web/package-lock.json
