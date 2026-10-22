@@ -12,6 +12,7 @@ An OpenAI-powered ReAct Agent for Canvas LMS companion tailored for student acco
 - Rich-powered command line chat experience (`canvas_chat.py`).
 - Bulk file synchronization (`file_index_downloader.py`) with optional OpenAI Vector Store uploads.
 - WebSocket bridge (`ws_server.py`) that exposes agent chat and download workflows to the web page (`frontend/index.html`), gated by Cloudflare Turnstile.
+- React web client (`web/`), a Vite + TypeScript port of the web page with the same features.
 - End-to-end tests (`tests/`) and example scripts (`examples/`).
 
 ---
@@ -24,6 +25,7 @@ canvas_ai/
 ├── file_index_downloader.py  # Bulk download + optional vector store upload
 ├── ws_server.py              # Authenticated WebSocket bridge
 ├── frontend/index.html       # Web chat page (Turnstile + WebSocket)
+├── web/                      # React client (Vite + TypeScript)
 ├── tests/                    # End-to-end tests (fake model, no network)
 ├── configs/
 │   └── canvas_agent_config.py
@@ -174,6 +176,21 @@ Connection flow:
 		 - Server streams the final status and statistics
 
 Turnstile tokens come from the browser widget, so the server can't be driven from a script. To exercise it without a browser, run the tests below; they call the same message handler directly.
+
+---
+
+## Web Client
+
+`web/` is a React + TypeScript frontend, built with Vite. It connects with the backend with WebSocket protocol and renders Markdown, KaTeX and the server's LaTeX/chemfig SVGs.
+
+```bash
+cd web
+npm install
+npm run dev     # http://localhost:5173
+npm run build   # type-checks, then writes static files to web/dist/
+```
+
+The WebSocket endpoint and Turnstile site key are read at build time from `web/.env.local` (see `web/.env.example`) and default to production. For UI work against a stand-in server, set `VITE_SKIP_TURNSTILE=1` (dev server only) to skip the challenge.
 
 ---
 

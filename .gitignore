@@ -58,3 +58,4 @@ dockerfile
 .gitignore
 *.key
 web/package-lock.json
+web/node_modules/
