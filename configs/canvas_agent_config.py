@@ -31,6 +31,7 @@ from src.tools.canvas_tools import (
     VectorStoreListFiles,
     VectorStoreGetFile,
 )
+from src.tools.latex_tools import CheckLatex
 
 # Canvas student agent configuration
 canvas_student_agent_config = dict(
@@ -70,6 +71,7 @@ canvas_student_agent_config = dict(
         VectorStoreSearch(),              # Search knowledge bases
         VectorStoreListFiles(),           # List files inside a knowledge base
         VectorStoreGetFile(),             # Read the contents of a file
+        CheckLatex(),                     # Compile math / chemfig the way the student will see it
     ],
     
     # Customize the system prompt here or edit src/agent/general_agent/prompts/general_agent.yaml

@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, TypedDict, Union, Optional
 
 from src.models import ChatMessage, MessageRole
+from src.models.base import ChatMessageToolCall, ChatMessageToolCallFunction
 from src.exception import AgentError
 from src.utils import make_json_serializable
 from src.logger import LogLevel, AgentLogger, Timing, TokenUsage
@@ -52,6 +53,7 @@ class ActionStep(MemoryStep):
     action_output: Any = None
     token_usage: TokenUsage | None = None
     is_final_answer: bool = False
+    tool_results: dict[str, str] | None = None  # tool call id -> that call's observation
 
     def dict(self):
         # We overwrite the method to parse the tool_calls and action_output manually
@@ -70,9 +72,13 @@ class ActionStep(MemoryStep):
             "action_output": make_json_serializable(self.action_output),
             "token_usage": asdict(self.token_usage) if self.token_usage else None,
             "is_final_answer": self.is_final_answer,
+            "tool_results": self.tool_results,
         }
 
     def to_messages(self, summary_mode: bool = False) -> list[ChatMessage]:
+        if self.tool_calls and all(tc.id for tc in self.tool_calls):
+            return self._to_native_tool_messages()
+
         messages = []
         if self.model_output is not None and not summary_mode:
             messages.append(
@@ -130,6 +136,53 @@ class ActionStep(MemoryStep):
                 ChatMessage(role=MessageRole.TOOL_RESPONSE, content=[{"type": "text", "text": message_content}])
             )
 
+        return messages
+
+    def _to_native_tool_messages(self) -> list[ChatMessage]:
+        """Replay this step as the model saw it: its tool calls, then one result message per call.
+
+        Sending results as native `tool` messages (instead of narrated text) lets the model see that each
+        call already completed; without that it tends to repeat the same call until max_steps.
+        """
+        messages = [
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content=None,
+                tool_calls=[
+                    ChatMessageToolCall(
+                        function=ChatMessageToolCallFunction(
+                            name=tc.name, arguments=make_json_serializable(tc.arguments)
+                        ),
+                        id=tc.id,
+                        type="function",
+                    )
+                    for tc in self.tool_calls
+                ],
+            )
+        ]
+        results = self.tool_results or {}
+        for tc in self.tool_calls:
+            if tc.id in results:
+                text = results[tc.id]
+            elif self.error is not None:
+                text = (
+                    f"Error:\n{self.error}\nNow let's retry: take care not to repeat previous errors! "
+                    "If you have retried several times, try a completely different approach."
+                )
+            elif tc.name == "final_answer_tool":
+                text = "Final answer delivered to the user."
+            else:
+                text = "No result was recorded for this call."
+            messages.append(
+                ChatMessage(role=MessageRole.TOOL, content=[{"type": "text", "text": text}], tool_call_id=tc.id)
+            )
+        if self.observations_images:
+            messages.append(
+                ChatMessage(
+                    role=MessageRole.USER,
+                    content=[{"type": "image", "image": image} for image in self.observations_images],
+                )
+            )
         return messages
 
 @dataclass

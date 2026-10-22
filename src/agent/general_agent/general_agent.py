@@ -26,6 +26,7 @@ from src.base import (ToolOutput,
                       StreamEvent)
 
 from src.memory import (ActionStep,
+                        TaskStep,
                         ToolCall,
                         AgentMemory)
 from src.logger import (LogLevel,
@@ -216,17 +217,33 @@ class GeneralAgent(AsyncMultiStepAgent):
                 final_answer_call = (tool_name, tool_arguments)
                 break  # Stop: final answer reached, no further tool calls
             else:
-                parallel_calls.append((tool_name, tool_arguments))
+                parallel_calls.append((tool_name, tool_arguments, tool_call.id))
+
+        # Record the calls before running them, so a failing tool still leaves a complete call/result pair in memory
+        if model_outputs:
+            memory_step.model_output = "\n".join(model_outputs)
+        if tool_calls:
+            memory_step.tool_calls = tool_calls
+        memory_step.tool_results = {}
 
         # Helper function to process a single tool call
         async def process_single_tool_call(call_info):
-            tool_name, tool_arguments = call_info
+            tool_name, tool_arguments, call_id = call_info
             self.logger.log(
                 Panel(Text(f"Calling tool: '{tool_name}' with arguments: {tool_arguments}")),
                 level=LogLevel.INFO,
             )
             if tool_arguments is None:
                 tool_arguments = {}
+            previous = self._previous_tool_result(tool_name, tool_arguments)
+            if previous is not None:
+                # Same call already answered in this task: don't hit the API again, and tell the model so
+                observation = (
+                    f"{previous}\n\n(You already called {tool_name} with exactly these arguments for this question; "
+                    "this is the same result. Do not call it again: use it, or answer with final_answer_tool.)"
+                )
+                memory_step.tool_results[call_id] = observation
+                return observation
             tool_call_result = await self.execute_tool_call(tool_name, tool_arguments)
             tool_call_result_type = type(tool_call_result)
             if tool_call_result_type in [AgentImage, AgentAudio]:
@@ -243,6 +260,7 @@ class GeneralAgent(AsyncMultiStepAgent):
                 f"Observations: {observation.replace('[', '|')}",  # escape potential rich-tag-like components
                 level=LogLevel.INFO,
             )
+            memory_step.tool_results[call_id] = observation
             return observation
 
         # Process tool calls in parallel
@@ -291,12 +309,19 @@ class GeneralAgent(AsyncMultiStepAgent):
             yield ToolOutput(output=final_answer, is_final_answer=True)
 
         # Update memory step with all results
-        if model_outputs:
-            memory_step.model_output = "\n".join(model_outputs)
-        if tool_calls:
-            memory_step.tool_calls = tool_calls
         if observations:
             memory_step.observations = "\n".join(observations)
+
+    def _previous_tool_result(self, tool_name: str, arguments: Any) -> str | None:
+        """The result of an identical earlier call (same tool and arguments) made for the current task, if any."""
+        for step in reversed(self.memory.steps):
+            if isinstance(step, TaskStep):
+                return None  # only look within the current question
+            if isinstance(step, ActionStep) and step.tool_calls and step.tool_results:
+                for call in step.tool_calls:
+                    if call.name == tool_name and call.arguments == arguments and call.id in step.tool_results:
+                        return step.tool_results[call.id].split("\n\n(You already called")[0]
+        return None
 
     async def execute_tool_call(self, tool_name: str, arguments: dict[str, str] | str) -> Any:
         """

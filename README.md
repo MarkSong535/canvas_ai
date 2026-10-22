@@ -166,7 +166,8 @@ Authentication flow:
 		 - `{ "type": "tool", "name": "canvas_list_courses" }` while the agent calls a Canvas tool
 		 - `{ "type": "delta", "text": "..." }` chunks of the answer as it is generated
 		 - `{ "type": "retract" }` if the partial answer was rejected (clear it and keep listening)
-		 - `{ "type": "answer", "answer": "..." }` the complete final answer (or `{ "error": "..." }`)
+		 - `{ "type": "answer", "answer": "...", "renders": { "<key>": "<svg>" } }` the complete final answer (or `{ "error": "..." }`). Answers are Markdown with LaTeX math (`\ce{}` for chemistry) and ` ```chemfig ` blocks for structures. The server compiles every snippet with real LaTeX + dvisvgm (`src/utils/latex_svg.py`, installed in the Docker image) and returns SVGs keyed `I:<tex>` (inline math), `D:<tex>` (display math) or `C:<code>` (chemfig, trimmed). Inline SVGs are sized in em and baseline-aligned; anything missing can be rendered client-side (the web UI falls back to KaTeX).
+	 - The agent also has a `check_latex` tool that compiles a snippet with the same renderer and returns the LaTeX error, so it can fix complex formulas or structures before answering.
 	 - New conversation: `{ "type": "reset" }` → `{ "status": "reset" }`. Each connection starts its own conversation; within it the agent remembers earlier exchanges.
 	 - Download: staged workflow
 		 - Request course list -> `{ "type": "download" }`

@@ -21,6 +21,9 @@ from src.models import ChatMessageStreamDelta, ChatMessageToolCall
 
 FINAL_ANSWER_TOOL = "final_answer_tool"
 
+# C0 control characters (except tab/newline/CR) occasionally appear in model output and render as junk
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
 _ESCAPES = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
 
 
@@ -85,9 +88,11 @@ async def stream_agent_events(agent: Any, task: str, reset: bool = False) -> Asy
                     continue
                 text = partial_json_string_value(call["args"], "answer")
                 if text is not None and len(text) > call["sent"]:
-                    yield {"type": "delta", "text": text[call["sent"]:]}
+                    chunk = _CONTROL_RE.sub("", text[call["sent"]:])
                     call["sent"] = len(text)
-                    streamed_answer = True
+                    if chunk:
+                        yield {"type": "delta", "text": chunk}
+                        streamed_answer = True
         elif isinstance(event, ChatMessageToolCall):
             if event.function.name != FINAL_ANSWER_TOOL:
                 yield {"type": "tool", "name": event.function.name}
@@ -97,4 +102,4 @@ async def stream_agent_events(agent: Any, task: str, reset: bool = False) -> Asy
             calls = {}
             streamed_answer = False
         elif isinstance(event, FinalAnswerStep):
-            yield {"type": "final", "answer": str(event.output)}
+            yield {"type": "final", "answer": _CONTROL_RE.sub("", str(event.output))}

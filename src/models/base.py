@@ -87,6 +87,7 @@ class ChatMessage:
     tool_calls: list[ChatMessageToolCall] | None = None
     raw: Any | None = None  # Stores the raw output from the API
     token_usage: TokenUsage | None = None
+    tool_call_id: str | None = None  # Set on MessageRole.TOOL messages: the call this result answers
 
     def model_dump_json(self):
         return json.dumps(get_dict_from_nested_dataclasses(self, ignore_key="raw"))
@@ -162,6 +163,7 @@ class MessageRole(str, Enum):
     SYSTEM = "system"
     TOOL_CALL = "tool-call"
     TOOL_RESPONSE = "tool-response"
+    TOOL = "tool"  # Native tool-result message (OpenAI `role: "tool"` with `tool_call_id`)
 
     @classmethod
     def roles(cls):

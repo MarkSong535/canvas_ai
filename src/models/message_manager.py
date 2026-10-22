@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Optional, Any
 from copy import deepcopy
 
@@ -70,7 +71,40 @@ class MessageManager():
                         else:
                             element["image"] = encode_image_base64(element["image"])
 
-            if len(output_message_list) > 0 and message.role == output_message_list[-1]["role"]:
+            # Native tool calling: an assistant message carrying tool_calls, then one `tool` message per call.
+            # These are never merged with neighbours, or the call/result pairing would break.
+            if message.tool_calls or message.role == MessageRole.TOOL:
+                if flatten_messages_as_text and isinstance(message.content, list):
+                    content = "\n".join(el["text"] for el in message.content if el["type"] == "text")
+                else:
+                    content = message.content
+                entry: dict[str, Any] = {"role": message.role, "content": content}
+                if message.tool_calls:
+                    entry["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                                if isinstance(tc.function.arguments, str)
+                                else json.dumps(tc.function.arguments, ensure_ascii=False),
+                            },
+                        }
+                        for tc in message.tool_calls
+                    ]
+                if message.tool_call_id:
+                    entry["tool_call_id"] = message.tool_call_id
+                output_message_list.append(entry)
+                continue
+
+            last = output_message_list[-1] if output_message_list else None
+            if (
+                last is not None
+                and message.role == last["role"]
+                and "tool_calls" not in last
+                and last["role"] != MessageRole.TOOL
+            ):
                 assert isinstance(message.content, list), "Error: wrong content:" + str(message.content)
                 if flatten_messages_as_text:
                     output_message_list[-1]["content"] += "\n" + message.content[0]["text"]

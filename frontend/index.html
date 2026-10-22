@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Canvas AI Client</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css"
+      integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+"
+      crossorigin="anonymous"
+    />
     <style>
       @font-face {
         font-family: "SF Pro Rounded";
@@ -197,6 +203,159 @@
       }
       .msg.user .msg-text {
         color: #9ab8d4;
+      }
+      /* Rendered Markdown + LaTeX in AI replies */
+      .msg-text.md {
+        white-space: normal;
+      }
+      .md > :first-child {
+        margin-top: 0;
+      }
+      .md > :last-child {
+        margin-bottom: 0;
+      }
+      .md p,
+      .md ul,
+      .md ol,
+      .md pre,
+      .md blockquote,
+      .md table,
+      .md hr {
+        margin: 0 0 10px;
+      }
+      .md h1,
+      .md h2,
+      .md h3,
+      .md h4 {
+        margin: 16px 0 8px;
+        line-height: 1.3;
+        font-weight: 600;
+      }
+      .md h1 {
+        font-size: 18px;
+      }
+      .md h2 {
+        font-size: 16px;
+      }
+      .md h3,
+      .md h4 {
+        font-size: 14px;
+      }
+      .md ul,
+      .md ol {
+        padding-left: 22px;
+      }
+      .md li + li {
+        margin-top: 3px;
+      }
+      .md li > p {
+        margin-bottom: 4px;
+      }
+      .md a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .md a:hover {
+        text-decoration: underline;
+      }
+      .md strong {
+        font-weight: 600;
+      }
+      .md code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .md pre {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        overflow-x: auto;
+      }
+      .md pre code {
+        background: none;
+        border: 0;
+        padding: 0;
+        white-space: pre;
+      }
+      .md blockquote {
+        border-left: 3px solid var(--border);
+        padding-left: 12px;
+        color: var(--text-dim);
+      }
+      .md hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+      }
+      .md table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .md th,
+      .md td {
+        border: 1px solid var(--border);
+        padding: 5px 10px;
+        text-align: left;
+      }
+      .md th {
+        background: var(--surface2);
+        font-weight: 600;
+      }
+      .md .katex {
+        font-size: 1.05em;
+      }
+      .md .katex-display {
+        margin: 8px 0 12px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 2px 0;
+      }
+      /* Server-rendered LaTeX math (SVG sized in em, aligned on the text baseline, drawn in currentColor) */
+      .md .math-svg svg {
+        overflow: visible;
+      }
+      .md .math-display {
+        display: block;
+        margin: 8px 0 12px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 2px 0;
+        text-align: center;
+      }
+      .md .math-display svg {
+        vertical-align: middle !important;
+      }
+      /* Chemical structures: server-rendered chemfig SVG drawn in currentColor */
+      .md .chemfig {
+        margin: 8px 0 12px;
+        overflow-x: auto;
+        color: var(--text);
+        text-align: center;
+      }
+      .md .chemfig svg {
+        max-width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      .md .chemfig-pending {
+        display: inline-block;
+        font-size: 12px;
+        color: var(--text-dim);
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      .md .chemfig-failed {
+        font-size: 11px;
+        color: var(--text-dimmer);
+        margin: -6px 0 10px;
       }
       .typing-dots {
         display: inline-flex;
@@ -765,6 +924,26 @@
         </div>
       </div>
     </div>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"
+      integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"
+      integrity="sha384-+VfUPEb0PdtChMwmBcBmykRMDd+v6D/oFmB3rZM/puCMDYcIvF968OimRh4KQY9a"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"
+      integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/mhchem.min.js"
+      integrity="sha384-ifpG+NlgMq0kvOSGqGQxW1mJKpjjMDmZdpKGq3tbvD3WPhyshCEEYClriK/wRVU0"
+      crossorigin="anonymous"
+    ></script>
     <script>
       const WS_ENDPOINT = "wss://canvas.marksong.tech/";
 
@@ -801,6 +980,89 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      // AI replies: Markdown (marked) + LaTeX (KaTeX), sanitized with DOMPurify.
+      // Falls back to plain text if a library failed to load.
+      const RICH_OK = !!(window.marked && window.DOMPurify && window.katex);
+      if (RICH_OK) {
+        marked.setOptions({ gfm: true, breaks: true });
+        DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+          if (node.tagName === "A") {
+            node.setAttribute("target", "_blank");
+            node.setAttribute("rel", "noopener noreferrer");
+          }
+        });
+      }
+      // Code spans/blocks (unterminated fences too, while streaming) are left alone
+      const CODE_RE = /(```[\s\S]*?(?:```|$)|`[^`\n]+`)/g;
+      // $$…$$ and \[…\] display; \(…\) and $…$ inline. Inline $ needs non-space just inside both
+      // delimiters and no digit after the closing one, so prices like "$5 and $10" stay text.
+      const MATH_RE =
+        /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g;
+
+      const sanitizeSvg = (svg) => DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
+
+      // `renders` maps snippet keys to SVG rendered by the server with real LaTeX: "I:"/"D:" + tex for
+      // inline/display math, "C:" + code for ```chemfig blocks (same extraction rules as src/utils/latex_svg.py).
+      // Pass null while the reply is still streaming: math previews with KaTeX and chemfig shows a placeholder.
+      // Snippets missing from the final map fall back to KaTeX / the chemfig source.
+      function renderRich(el, text, renders = {}) {
+        if (!RICH_OK) {
+          el.classList.remove("md");
+          el.textContent = text;
+          return;
+        }
+        // Pull math out before Markdown parsing (which would eat its backslashes and underscores),
+        // then put KaTeX output back in after sanitizing.
+        const math = [];
+        const src = String(text)
+          .split(CODE_RE)
+          .map((part, i) =>
+            i % 2
+              ? part
+              : part.replace(MATH_RE, (_, d1, d2, i1, i2) => {
+                  math.push({ tex: d1 ?? d2 ?? i1 ?? i2, display: d1 !== undefined || d2 !== undefined });
+                  return `KTXMATH${math.length - 1}END`;
+                }),
+          )
+          .join("");
+        const html = DOMPurify.sanitize(marked.parse(src)).replace(/KTXMATH(\d+)END/g, (_, n) => {
+          const { tex, display } = math[+n];
+          const svg = renders && renders[(display ? "D:" : "I:") + tex];
+          if (svg) return `<span class="math-svg${display ? " math-display" : ""}">${sanitizeSvg(svg)}</span>`;
+          return katex.renderToString(tex, { displayMode: display, throwOnError: false });
+        });
+        el.classList.add("md");
+        el.innerHTML = html;
+        // Display math is its own block; drop the line breaks Markdown left around it (they double the spacing)
+        el.querySelectorAll(".math-display, .katex-display").forEach((block) => {
+          for (const sib of [block.previousSibling, block.nextSibling]) {
+            if (sib && sib.nodeName === "BR") sib.remove();
+          }
+        });
+        el.querySelectorAll("pre > code.language-chemfig").forEach((code) => {
+          const pre = code.parentElement;
+          if (renders === null) {
+            const pending = document.createElement("div");
+            pending.className = "chemfig-pending";
+            pending.textContent = "⌬ Drawing structure…";
+            pre.replaceWith(pending);
+            return;
+          }
+          const svg = renders["C:" + code.textContent.trim()];
+          if (!svg) {
+            const note = document.createElement("div");
+            note.className = "chemfig-failed";
+            note.textContent = "Couldn't draw this structure; showing its chemfig source.";
+            pre.after(note);
+            return;
+          }
+          const fig = document.createElement("div");
+          fig.className = "chemfig";
+          fig.innerHTML = sanitizeSvg(svg);
+          pre.replaceWith(fig);
+        });
       }
 
       function setCourseStatus(text, durationMs) {
@@ -964,12 +1226,13 @@
         scrollBottom();
       }
 
-      function addAiMsg(text) {
+      function addAiMsg(text, renders) {
         resetErrorCounter();
         removeEmpty();
         const d = document.createElement("div");
         d.className = "msg ai";
-        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text">${escapeHtml(text)}</div></div>`;
+        d.innerHTML = `<div class="msg-avatar">ai</div><div class="msg-body"><div class="msg-role">canvas ai</div><div class="msg-text"></div></div>`;
+        renderRich(d.querySelector(".msg-text"), text, renders || {});
         messagesEl.appendChild(d);
         scrollBottom();
       }
@@ -1043,27 +1306,38 @@
         scrollBottom();
       }
 
+      // Re-rendering Markdown + math on every delta is wasteful; coalesce to one render per frame
+      let streamRenderQueued = false;
+
       function renderStreamText() {
-        const b = streamBubble();
-        if (!b) return;
-        const t = b.querySelector(".msg-text");
-        if (!streamText) {
-          t.innerHTML = TYPING_DOTS_HTML;
-          return;
-        }
-        t.textContent = streamText;
-        const cursor = document.createElement("span");
-        cursor.className = "stream-cursor";
-        t.appendChild(cursor);
-        scrollBottom();
+        if (streamRenderQueued) return;
+        streamRenderQueued = true;
+        requestAnimationFrame(() => {
+          streamRenderQueued = false;
+          const b = streamBubble();
+          if (!b) return;
+          const t = b.querySelector(".msg-text");
+          if (!streamText) {
+            t.classList.remove("md");
+            t.innerHTML = TYPING_DOTS_HTML;
+            return;
+          }
+          renderRich(t, streamText, null);
+          // Put the cursor at the end of the last text block rather than on a line of its own
+          const blocks = t.querySelectorAll("p, li, h1, h2, h3, h4, td, pre code");
+          const cursor = document.createElement("span");
+          cursor.className = "stream-cursor";
+          (blocks[blocks.length - 1] || t).appendChild(cursor);
+          scrollBottom();
+        });
       }
 
       // Settle the streaming bubble: show `finalText`, or drop it when the reply failed
-      function finishStream(finalText) {
+      function finishStream(finalText, renders) {
         const b = streamBubble();
         streamText = "";
         if (!b) {
-          if (finalText !== undefined) addAiMsg(finalText);
+          if (finalText !== undefined) addAiMsg(finalText, renders);
           return;
         }
         if (finalText === undefined) {
@@ -1073,7 +1347,7 @@
         resetErrorCounter();
         b.removeAttribute("id");
         b.querySelector(".msg-status").remove();
-        b.querySelector(".msg-text").textContent = finalText;
+        renderRich(b.querySelector(".msg-text"), finalText, renders || {});
         scrollBottom();
       }
 
@@ -1174,7 +1448,7 @@
           }
 
           if (typeof d.answer === "string") {
-            finishStream(d.answer);
+            finishStream(d.answer, d.renders);
             pending = false;
             updateBtn();
             return;

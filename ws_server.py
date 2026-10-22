@@ -19,6 +19,7 @@ from websockets.server import WebSocketServerProtocol, serve
 import file_index_downloader
 from configs.canvas_agent_config import agent_config
 from src.agent.stream_events import stream_agent_events
+from src.utils import latex_svg
 from src.models import model_manager
 from src.registry import AGENT
 
@@ -135,7 +136,8 @@ async def handle_agent_query(message: Dict[str, Any], send: SendFn) -> Dict[str,
             answer = event["answer"]
         else:
             await send(event)
-    return {"type": "answer", "answer": answer}
+    # Math and ```chemfig blocks are rendered to SVG here; the page swaps each snippet for its SVG by key
+    return {"type": "answer", "answer": answer, "renders": await latex_svg.render_answer(answer)}
 
 
 async def reset_conversation() -> None:
