@@ -2,9 +2,10 @@
 Canvas LMS API toolset - student-permission version
 
 This file contains all the API tools a student can use on Canvas
-Reads CANVAS_ACCESS_TOKEN and CANVAS_URL from os.environ
+Each tool calls Canvas as the CanvasAccount it was built with (or, without one, CANVAS_URL / CANVAS_ACCESS_TOKEN)
 """
 
+import asyncio
 import os
 from collections import OrderedDict
 import aiohttp
@@ -12,6 +13,7 @@ from typing import Optional, List, Dict, Any
 from src.tools import AsyncTool, ToolResult
 from src.registry import TOOL
 from src import canvas_sandbox
+from src.canvas_account import DEFAULT_ACCOUNT_KEY, CanvasAccount
 from src.utils.file_text import extract_text
 
 WRITE_BLOCKED = (
@@ -25,34 +27,40 @@ WRITE_POLICY = (
 
 
 class CanvasAPIBase(AsyncTool):
-    """Base class for Canvas API tools; handles common API request logic"""
+    """Base class for Canvas API tools; handles common API request logic
+
+    A tool built with an account calls Canvas only as that account; the WebSocket server builds one tool set per
+    conversation. A tool built without one (the command-line entry points) reads the environment on every request.
+    """
     
-    def __init__(self):
+    def __init__(self, account: Optional[CanvasAccount] = None):
         super().__init__()
-        if not os.environ.get("CANVAS_ACCESS_TOKEN"):
+        self._account = account
+        if account is None and not os.environ.get("CANVAS_ACCESS_TOKEN"):
             raise ValueError("CANVAS_ACCESS_TOKEN environment variable not found")
 
     @property
+    def account(self) -> CanvasAccount:
+        # No bound account: read on every request, never stored (sandbox mode swaps the URL and token at start)
+        if self._account is not None:
+            return self._account
+        return CanvasAccount(
+            key=DEFAULT_ACCOUNT_KEY,
+            url=os.environ.get("CANVAS_URL", ""),
+            token=os.environ.get("CANVAS_ACCESS_TOKEN", ""),
+        )
+
+    @property
     def headers(self) -> dict:
-        # Read on every request, never stored: in sandbox mode the token is swapped for a simulated one at start
-        return {
-            "Authorization": f"Bearer {os.environ.get('CANVAS_ACCESS_TOKEN', '')}",
-            "Content-Type": "application/json"
-        }
+        return self.account.headers()
 
     @property
     def canvas_url(self) -> str:
-        # Read on every request: in sandbox mode CANVAS_URL is switched to the local server after tools exist
-        url = os.environ.get("CANVAS_URL", "https://canvas.instructure.com").rstrip("/")
-        if url.startswith("http://") and not url.startswith(("http://127.0.0.1", "http://localhost")):
-            url = "https://" + url[len("http://"):]
-        if "http" not in url:
-            url = "https://" + url
-        return url
+        return self.account.base_url
 
     @property
     def base_url(self) -> str:
-        return f"{self.canvas_url}/api/v1"
+        return self.account.api_url
     
     async def _make_request(
         self, 
@@ -1070,7 +1078,9 @@ class CanvasReadFile(CanvasAPIBase):
 
     CHUNK_CHARS = 12000
     MAX_BYTES = 60 * 1024 * 1024
-    _text_cache: "OrderedDict[str, tuple[str, str, str]]" = OrderedDict()  # file id -> (name, text, note)
+    # Shared by every conversation, so keyed by account as well as file: a hit is only ever text this account
+    # read before, and it is looked up only after Canvas has answered this account's own request for the file
+    _text_cache: "OrderedDict[tuple[str, str, str], tuple[str, str, str]]" = OrderedDict()  # -> (name, text, note)
 
     async def forward(self, file_id: str, start: int = 0) -> ToolResult:
         """Read a file's text"""
@@ -1080,14 +1090,15 @@ class CanvasReadFile(CanvasAPIBase):
                 return ToolResult(output=None, error=meta["error"])
             name = meta.get("display_name") or meta.get("filename") or f"file {file_id}"
 
-            cached = self._text_cache.get(str(file_id))
+            cache_key = (self.account.key, self.canvas_url, str(file_id))
+            cached = self._text_cache.get(cache_key)
             if cached is None:
                 data, problem = await self._file_bytes(str(file_id), meta)
                 if problem:
                     return ToolResult(output=f"📄 {name}: {problem}", error=None)
                 text, note = extract_text(data, name, meta.get("content-type"))
                 cached = (name, text, note)
-                self._text_cache[str(file_id)] = cached
+                self._text_cache[cache_key] = cached
                 while len(self._text_cache) > 16:
                     self._text_cache.popitem(last=False)
             name, text, note = cached
@@ -1271,8 +1282,44 @@ class CanvasSearchFiles(CanvasAPIBase):
             return ToolResult(output=None, error=f"Failed to search files: {str(e)}")
 
 
+NOT_FOUND_STORE = "Knowledge base not found. Use vector_store_list to see the available ones."
+NOT_FOUND_FILE = "File not found in your knowledge bases. Use vector_store_list_files to find file IDs."
+
+
+class VectorStoreToolBase(AsyncTool):
+    """Knowledge-base tools only see the vector stores owned by their account (see CanvasAccount).
+
+    The OpenAI client blocks, so each call runs in a worker thread and other conversations keep streaming.
+    """
+
+    def __init__(self, account: Optional[CanvasAccount] = None):
+        super().__init__()
+        self._account = account
+
+    @property
+    def account(self) -> CanvasAccount:
+        return self._account or CanvasAccount(key=DEFAULT_ACCOUNT_KEY, url="", token="")
+
+    def _owns_store(self, client, vector_store_id: str) -> bool:
+        try:
+            return self.account.owns_vector_store(client.vector_stores.retrieve(vector_store_id))
+        except Exception:  # noqa: BLE001 - unknown id: report it like a store of another account
+            return False
+
+    def _owns_file(self, client, file_id: str) -> bool:
+        for store in client.vector_stores.list(limit=100).data:
+            if not self.account.owns_vector_store(store):
+                continue
+            try:
+                client.vector_stores.files.retrieve(file_id=file_id, vector_store_id=store.id)
+                return True
+            except Exception:  # noqa: BLE001 - not in this store
+                continue
+        return False
+
+
 @TOOL.register_module(name="vector_store_list", force=True)
-class VectorStoreList(AsyncTool):
+class VectorStoreList(VectorStoreToolBase):
     """List all available vector stores"""
     
     name = "vector_store_list"
@@ -1288,6 +1335,9 @@ class VectorStoreList(AsyncTool):
     output_type = "any"
     
     async def forward(self) -> ToolResult:
+        return await asyncio.to_thread(self._run)
+
+    def _run(self) -> ToolResult:
         """Get the vector store list"""
         try:
             # Import OpenAI
@@ -1316,7 +1366,7 @@ class VectorStoreList(AsyncTool):
             
             # Get the vector stores
             response = client.vector_stores.list(limit=100)
-            vector_stores = list(response.data)
+            vector_stores = [vs for vs in response.data if self.account.owns_vector_store(vs)]
             
             if not vector_stores:
                 return ToolResult(
@@ -1342,7 +1392,7 @@ class VectorStoreList(AsyncTool):
 
 
 @TOOL.register_module(name="vector_store_search", force=True)
-class VectorStoreSearch(AsyncTool):
+class VectorStoreSearch(VectorStoreToolBase):
     """Search a vector store for relevant content"""
     
     name = "vector_store_search"
@@ -1372,6 +1422,9 @@ class VectorStoreSearch(AsyncTool):
     output_type = "any"
     
     async def forward(self, vector_store_id: str, query: str, max_results: int = 5) -> ToolResult:
+        return await asyncio.to_thread(self._run, vector_store_id, query, max_results)
+
+    def _run(self, vector_store_id: str, query: str, max_results: int = 5) -> ToolResult:
         """Search the vector store"""
         try:
             # Import OpenAI
@@ -1397,6 +1450,8 @@ class VectorStoreSearch(AsyncTool):
                 api_key=openai_api_key,
                 default_headers={"OpenAI-Beta": "assistants=v2"}
             )
+            if not self._owns_store(client, vector_store_id):
+                return ToolResult(output=None, error=NOT_FOUND_STORE)
             
             # Run the search
             response = client.vector_stores.search(
@@ -1454,7 +1509,7 @@ class VectorStoreSearch(AsyncTool):
 
 
 @TOOL.register_module(name="vector_store_list_files", force=True)
-class VectorStoreListFiles(AsyncTool):
+class VectorStoreListFiles(VectorStoreToolBase):
     """List all files in a vector store"""
     
     name = "vector_store_list_files"
@@ -1485,6 +1540,9 @@ class VectorStoreListFiles(AsyncTool):
     output_type = "any"
     
     async def forward(self, vector_store_id: str, read_content: bool = False, limit: int = 100) -> ToolResult:
+        return await asyncio.to_thread(self._run, vector_store_id, read_content, limit)
+
+    def _run(self, vector_store_id: str, read_content: bool = False, limit: int = 100) -> ToolResult:
         """List vector store files"""
         try:
             # Import OpenAI
@@ -1510,6 +1568,8 @@ class VectorStoreListFiles(AsyncTool):
                 api_key=openai_api_key,
                 default_headers={"OpenAI-Beta": "assistants=v2"}
             )
+            if not self._owns_store(client, vector_store_id):
+                return ToolResult(output=None, error=NOT_FOUND_STORE)
             
             # Get the vector store file list
             files = []
@@ -1629,7 +1689,7 @@ class VectorStoreListFiles(AsyncTool):
 
 
 @TOOL.register_module(name="vector_store_get_file", force=True)
-class VectorStoreGetFile(AsyncTool):
+class VectorStoreGetFile(VectorStoreToolBase):
     """Get a file by file_id and read its content"""
     
     name = "vector_store_get_file"
@@ -1655,6 +1715,9 @@ class VectorStoreGetFile(AsyncTool):
     output_type = "any"
     
     async def forward(self, file_id: str, max_length: int = 5000) -> ToolResult:
+        return await asyncio.to_thread(self._run, file_id, max_length)
+
+    def _run(self, file_id: str, max_length: int = 5000) -> ToolResult:
         """Get file content"""
         try:
             # Import OpenAI
@@ -1680,6 +1743,8 @@ class VectorStoreGetFile(AsyncTool):
                 api_key=openai_api_key,
                 default_headers={"OpenAI-Beta": "assistants=v2"}
             )
+            if not self._owns_file(client, file_id):
+                return ToolResult(output=None, error=NOT_FOUND_FILE)
             
             # Get the file info
             file_info = client.files.retrieve(file_id)

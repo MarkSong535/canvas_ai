@@ -121,11 +121,12 @@ def test_no_offer_at_the_top_tier():
 
 def test_websocket_escalate_message():
     import ws_server
+    from src.canvas_account import CanvasAccount
 
     router, completions, _ = make_router()
     agent, _ = make_agent([])
     agent.router = router
-    ws_server._AGENT_CACHE = agent
+    conversation = ws_server.Conversation(account=CanvasAccount(key="test", url="https://canvas.example.com", token="t"), agent=agent)
     completions["simple"].script += [tool_turn("e1"), tool_turn("e2"), tool_turn("e4"), answer_turn("e3", '{"answer": "Hmm."}')]
     completions["standard"].script += [answer_turn("f1", '{"answer": "Here it is."}')]
     frames = []
@@ -134,14 +135,11 @@ def test_websocket_escalate_message():
         frames.append(frame)
 
     async def run():
-        first, _ = await ws_server.handle_message({"type": "chat", "query": "List my courses"}, None, send)
-        retry, _ = await ws_server.handle_message({"type": "escalate"}, None, send)
+        first = await ws_server.handle_message(conversation, {"type": "chat", "query": "List my courses"}, send)
+        retry = await ws_server.handle_message(conversation, {"type": "escalate"}, send)
         return first, retry
 
-    try:
-        first, retry = asyncio.run(run())
-    finally:
-        ws_server._AGENT_CACHE = None
+    first, retry = asyncio.run(run())
     assert first["tier"] == "simple" and first["can_escalate"] is True
     assert retry["tier"] == "standard" and retry["answer"] == "Here it is." and retry["can_escalate"] is False
     assert {"type": "route", "tier": "standard"} in frames

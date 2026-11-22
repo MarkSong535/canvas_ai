@@ -76,6 +76,10 @@ WSS_KEYFILE=your_keyfile_here
 
 # Max duration of a session in minutes
 SESSION_DURATION=10
+# Max open conversations (one per WebSocket connection; each has its own agent and history). Default 20
+MAX_CONVERSATIONS=20
+# Max requests running at once across all conversations; extra requests wait their turn. Unset = no extra limit
+MAX_CONCURRENT_REQUESTS=4
 ```
 
 > **Generating a Canvas access token**
@@ -160,7 +164,7 @@ Connection flow:
 
 1. The page opens a WebSocket from `https://markso.ng` (other origins are refused at the handshake)
 2. Its first frame, within 15 seconds, is `{ "type": "verify", "token": "<Turnstile token>" }`; the server checks the token with Cloudflare (`TURNSTILE_*` settings)
-3. Server replies `{ "status": "verified" }`. Only one connection is active at a time, and it closes after `SESSION_DURATION` minutes
+3. Server replies `{ "status": "verified" }`. Each connection is its own conversation (own agent, history and download state), and it closes after `SESSION_DURATION` minutes. Up to `MAX_CONVERSATIONS` connections may be open at once; `MAX_CONCURRENT_REQUESTS` caps how many of their requests run at the same time (the rest wait). Messages within one connection are handled in order, and closing it cancels its work in progress
 4. Subsequent messages can be:
 	 - Chat: `{ "type": "chat", "query": "List my courses" }`. The reply streams back as several frames:
 		 - `{ "type": "tool", "name": "canvas_list_courses" }` while the agent calls a Canvas tool

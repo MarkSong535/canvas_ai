@@ -26,6 +26,11 @@ WSS_KEYFILE=your_keyfile_here
 # Max duration of a session in minutes
 SESSION_DURATION=10
 
+# Max open conversations (one per WebSocket connection; each has its own agent and history). Default 20
+MAX_CONVERSATIONS=20
+# Max requests running at once across all conversations; extra requests wait their turn. Unset = no extra limit
+MAX_CONCURRENT_REQUESTS=4
+
 # Canvas sandbox: yes = on start, fetch everything from Canvas once (all data and every file) into a local copy,
 # then answer every Canvas call from it. Writes (submissions, discussion replies, ...) are recorded locally and
 # never sent to Canvas. Manual refresh: python -m src.canvas_sandbox sync

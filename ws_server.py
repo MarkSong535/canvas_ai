@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from copy import deepcopy
+from dataclasses import dataclass
 import json
 import os
 import ssl
 import time
+import weakref
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import aiohttp
@@ -15,8 +18,9 @@ from dotenv import load_dotenv
 from websockets.server import WebSocketServerProtocol, serve
 
 import file_index_downloader
-from configs.canvas_agent_config import agent_config
+from configs.canvas_agent_config import agent_config, build_tools
 from src import canvas_sandbox
+from src.canvas_account import CanvasAccount
 from src.agent.routing import ConversationRouting, build_router
 from src.agent.stream_events import escalate_events, stream_agent_events
 from src.utils import latex_svg
@@ -27,7 +31,6 @@ load_dotenv()
 
 SendFn = Callable[[Dict[str, Any]], Awaitable[None]]
 
-_AGENT_CACHE = None
 WSS_ENABLED = os.getenv("WSS_ENABLED", "false").strip().lower() in {
     "1",
     "true",
@@ -51,53 +54,112 @@ def _parse_session_duration(raw: Optional[str]) -> int:
 
 SESSION_DURATION_MINUTES = _parse_session_duration(os.getenv("SESSION_DURATION"))
 
-# Track the single active WebSocket connection
-ACTIVE_WEBSOCKET: Optional[WebSocketServerProtocol] = None
-ACTIVE_WEBSOCKET_LOCK = asyncio.Lock()
 
-
-async def build_agent() -> Any:
-    """Create and cache the Canvas agent instance."""
-    global _AGENT_CACHE
-
-    if _AGENT_CACHE is not None:
-        return _AGENT_CACHE
-
-    required = ("CANVAS_ACCESS_TOKEN", "CANVAS_URL")
-    missing = [name for name in required if not os.getenv(name)]
-    if missing:
-        missing_str = ", ".join(missing)
-        raise RuntimeError(f"Missing environment variables: {missing_str}")
-
-    model_manager.init_models()
-
+def _parse_max_conversations(raw: Optional[str]) -> int:
+    """How many conversations may be open at once (MAX_CONVERSATIONS, default 20, minimum 1)."""
     try:
-        model = model_manager.registed_models[agent_config["model_id"]]
+        return max(int(raw), 1) if raw is not None else 20
+    except (TypeError, ValueError):
+        return 20
+
+
+MAX_CONVERSATIONS = _parse_max_conversations(os.getenv("MAX_CONVERSATIONS"))
+_open_conversations = 0
+
+
+def _parse_max_concurrent_requests(raw: Optional[str]) -> Optional[int]:
+    """How many requests (across all conversations) may run at once (MAX_CONCURRENT_REQUESTS).
+
+    Unset, empty or invalid means no limit beyond MAX_CONVERSATIONS. Requests over the limit wait their turn
+    rather than being refused.
+    """
+    try:
+        return max(int(raw), 1) if raw and raw.strip() else None
+    except ValueError:
+        return None
+
+
+MAX_CONCURRENT_REQUESTS = _parse_max_concurrent_requests(os.getenv("MAX_CONCURRENT_REQUESTS"))
+_request_slots: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = weakref.WeakKeyDictionary()
+
+
+async def _run_request(work: Awaitable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Run one request once a slot is free (immediately when MAX_CONCURRENT_REQUESTS is unset)."""
+    if MAX_CONCURRENT_REQUESTS is None:
+        return await work
+    slots = _request_slots.get(asyncio.get_running_loop())
+    if slots is None:
+        slots = _request_slots[asyncio.get_running_loop()] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    async with slots:
+        return await work
+
+
+@dataclass
+class Conversation:
+    """Everything one chat owns. Lives exactly as long as its WebSocket connection; nothing else references it."""
+
+    account: CanvasAccount
+    agent: Any  # its own agent: memory, routing state and last question for retries, tools bound to `account`
+    pending_courses: Optional[List[Dict[str, Any]]] = None  # course list offered for the next download selection
+
+
+_models_ready = False
+
+
+def _configured_model() -> Any:
+    """Register the models once per process; every conversation's agent shares these stateless clients."""
+    global _models_ready
+    if not _models_ready:
+        model_manager.init_models()
+        _models_ready = True
+    try:
+        return model_manager.registed_models[agent_config["model_id"]]
     except KeyError as exc:
         available = ", ".join(model_manager.list_models()) or "None"
         raise RuntimeError(
             f"Model '{agent_config['model_id']}' is not registered. Available: {available}"
         ) from exc
 
-    agent_build_config = dict(
+
+def build_agent(account: CanvasAccount) -> Any:
+    """A fresh Canvas agent whose tools call Canvas as `account`."""
+    agent = AGENT.build(dict(
         type=agent_config["type"],
         config=agent_config,
-        model=model,
-        tools=agent_config["tools"],
+        model=_configured_model(),
+        tools=build_tools(account),
         max_steps=agent_config["max_steps"],
         stream_outputs=agent_config.get("stream_outputs", False),
         max_history_turns=agent_config.get("max_history_turns"),
         name=agent_config.get("name"),
         description=agent_config.get("description"),
-    )
-
-    _AGENT_CACHE = AGENT.build(agent_build_config)
-    _AGENT_CACHE.router = build_router(agent_config)
-    return _AGENT_CACHE
+    ))
+    agent.router = build_router(agent_config)
+    return agent
 
 
-async def handle_agent_query(message: Dict[str, Any], send: SendFn) -> Dict[str, Any]:
-    """Process a chat payload through the Canvas agent, streaming progress through `send`.
+async def resolve_account(verification: Dict[str, Any]) -> CanvasAccount:
+    """The Canvas account a verified connection acts as.
+
+    Turnstile proves a human is present but carries no student identity, so every connection uses the shared
+    account from the environment. Real per-student sign-in replaces this: identify the student from
+    `verification` (the connection's first message) and return their own authorized account.
+    """
+    return CanvasAccount.from_env()
+
+
+# Seams the server uses to admit a connection; tests replace them with fakes
+AGENT_FACTORY: Callable[[CanvasAccount], Any] = build_agent
+ACCOUNT_RESOLVER: Callable[[Dict[str, Any]], Awaitable[CanvasAccount]] = resolve_account
+
+
+async def start_conversation(verification: Dict[str, Any]) -> Conversation:
+    account = await ACCOUNT_RESOLVER(verification)
+    return Conversation(account=account, agent=AGENT_FACTORY(account))
+
+
+async def handle_agent_query(conversation: Conversation, message: Dict[str, Any], send: SendFn) -> Dict[str, Any]:
+    """Process a chat payload through the conversation's agent, streaming progress through `send`.
 
     Streams `{"type": "route", "tier"}`, `{"type": "tool", "name"}`, `{"type": "delta", "text"}` and
     `{"type": "retract"}` frames while the agent works; the returned `{"type": "answer", ...}` frame is the
@@ -106,15 +168,13 @@ async def handle_agent_query(message: Dict[str, Any], send: SendFn) -> Dict[str,
     query = message.get("query")
     if not isinstance(query, str) or not query.strip():
         return {"error": "Payload must include a non-empty 'query' field."}
-    agent = await build_agent()
-    # reset=False: the agent keeps this connection's earlier exchanges (memory is cleared per connection)
-    return await _stream_answer(stream_agent_events(agent, query, reset=False), send)
+    # reset=False: the agent keeps this conversation's earlier exchanges
+    return await _stream_answer(stream_agent_events(conversation.agent, query, reset=False), send)
 
 
-async def handle_escalation(send: SendFn) -> Dict[str, Any]:
-    """The user accepted the offer to retry the last question one tier up."""
-    agent = await build_agent()
-    return await _stream_answer(escalate_events(agent), send)
+async def handle_escalation(conversation: Conversation, send: SendFn) -> Dict[str, Any]:
+    """The user accepted the offer to retry this conversation's last question one tier up."""
+    return await _stream_answer(escalate_events(conversation.agent), send)
 
 
 async def _stream_answer(events, send: SendFn) -> Dict[str, Any]:
@@ -135,32 +195,23 @@ async def _stream_answer(events, send: SendFn) -> Dict[str, Any]:
     return frame
 
 
-async def reset_conversation() -> None:
-    """Forget earlier exchanges so the next chat message starts a new conversation."""
-    agent = await build_agent()
-    agent.memory.reset()
-    agent.routing_state = ConversationRouting()
+def reset_conversation(conversation: Conversation) -> None:
+    """Forget this conversation's earlier exchanges so its next chat message starts afresh."""
+    conversation.agent.memory.reset()
+    conversation.agent.routing_state = ConversationRouting()
 
 
-async def fetch_course_catalog() -> List[Dict[str, Any]]:
-    """Return the list of available Canvas courses."""
+async def fetch_course_catalog(account: CanvasAccount) -> List[Dict[str, Any]]:
+    """Return the account's active Canvas courses."""
 
-    canvas_url = os.getenv("CANVAS_URL")
-    canvas_token = os.getenv("CANVAS_ACCESS_TOKEN")
-
-    if not canvas_url or not canvas_token:
+    if not account.url or not account.token:
         raise RuntimeError("Canvas configuration missing.")
-
-    headers = {
-        "Authorization": f"Bearer {canvas_token}",
-        "Accept": "application/json",
-    }
 
     async with aiohttp.ClientSession() as session:
         courses = await file_index_downloader.fetch_all_pages(
             session,
-            f"{canvas_url}/api/v1/courses",
-            headers,
+            f"{account.api_url}/courses",
+            account.headers(accept_json=True),
             params={"enrollment_state": "active", "per_page": 100},
             raise_on_error=True,
         )
@@ -168,11 +219,18 @@ async def fetch_course_catalog() -> List[Dict[str, Any]]:
     return courses
 
 
-async def handle_download_request(
+async def handle_download_request(conversation: Conversation, message: Dict[str, Any]) -> Dict[str, Any]:
+    """Run a download job for the conversation's account (the course list it offered is kept per conversation)."""
+    response, conversation.pending_courses = await _download(conversation.account, message,
+                                                             conversation.pending_courses)
+    return response
+
+
+async def _download(
+    account: CanvasAccount,
     message: Dict[str, Any],
     pending_courses: Optional[List[Dict[str, Any]]]
 ) -> Tuple[Dict[str, Any], Optional[List[Dict[str, Any]]]]:
-    """Trigger the file index downloader with automated selections."""
 
     skip_download = bool(message.get("skip_download", False))
     course_ids_raw = message.get("course_ids")
@@ -219,7 +277,7 @@ async def handle_download_request(
 
     if course_ids_raw is None and course_indices_raw is None and not skip_download:
         try:
-            courses = await fetch_course_catalog()
+            courses = await fetch_course_catalog(account)
         except Exception as exc:  # noqa: BLE001
             return {"status": "course_list_error", "error": f"Failed to fetch courses: {exc}"}, pending_courses
 
@@ -238,49 +296,37 @@ async def handle_download_request(
     if (course_ids is None or len(course_ids) == 0) and not skip_download:
         return {"error": "Provide course_ids or course_indices after requesting the course list."}, pending_courses
 
-    file_index_downloader.reset_stats()
-
-    if course_ids:
-        file_index_downloader.configure_automation(course_ids=course_ids, auto_confirm=auto_confirm)
-    else:
-        file_index_downloader.configure_automation(course_ids=None, auto_confirm=auto_confirm)
-
-    try:
-        await file_index_downloader.main(skip_download=skip_download)
-    finally:
-        file_index_downloader.clear_automation()
+    # The job carries its own selections, counters and output folder, so overlapping downloads stay separate
+    job = file_index_downloader.DownloadJob.automated(account, course_ids or None, auto_confirm)
+    await file_index_downloader.main(skip_download=skip_download, job=job)
 
     response = {
         "status": "completed",
-        "stats": deepcopy(file_index_downloader.stats),
+        "stats": deepcopy(job.stats),
     }
 
     return response, None
 
 
-async def handle_message(
-    message: Dict[str, Any],
-    pending_courses: Optional[List[Dict[str, Any]]],
-    send: SendFn,
-) -> Tuple[Dict[str, Any], Optional[List[Dict[str, Any]]]]:
-    """Route messages to the appropriate handler based on type."""
+async def handle_message(conversation: Conversation, message: Dict[str, Any], send: SendFn) -> Dict[str, Any]:
+    """Route a message to the handler for its type; every handler acts only on `conversation`."""
 
     message_type = message.get("type") or "chat"
 
     if message_type in {"chat", "query"}:
-        return await handle_agent_query(message, send), pending_courses
+        return await handle_agent_query(conversation, message, send)
 
     if message_type == "reset":
-        await reset_conversation()
-        return {"status": "reset"}, pending_courses
+        reset_conversation(conversation)
+        return {"status": "reset"}
 
     if message_type == "escalate":
-        return await handle_escalation(send), pending_courses
+        return await handle_escalation(conversation, send)
 
     if message_type == "download":
-        return await handle_download_request(message, pending_courses)
+        return await handle_download_request(conversation, message)
 
-    return {"error": f"Unsupported message type: {message_type}"}, pending_courses
+    return {"error": f"Unsupported message type: {message_type}"}
 
 
 async def verify_turnstile_token(token: Any) -> bool:
@@ -310,8 +356,8 @@ async def verify_turnstile_token(token: Any) -> bool:
         return False
 
 
-async def authenticate_websocket(websocket: WebSocketServerProtocol) -> bool:
-    """Require verification before acquiring a session or dispatching any request."""
+async def authenticate_websocket(websocket: WebSocketServerProtocol) -> Optional[Dict[str, Any]]:
+    """Require verification before starting a conversation; returns the verification message, or None."""
     try:
         raw_message = await asyncio.wait_for(websocket.recv(), timeout=15)
         if len(raw_message) > 4096:
@@ -327,34 +373,40 @@ async def authenticate_websocket(websocket: WebSocketServerProtocol) -> bool:
     if not verified:
         await websocket.send(json.dumps({"status": "verification_error", "error": "Verification failed. Please refresh verification and try again."}))
         await websocket.close(1008, "Verification required")
-    return verified
+        return None
+    return payload
 
 
 async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
-    """Handle a single WebSocket connection."""
-    global ACTIVE_WEBSOCKET
+    """Handle one WebSocket connection: one conversation, its messages processed strictly in order."""
+    global _open_conversations
 
-    if not await authenticate_websocket(websocket):
+    verification = await authenticate_websocket(websocket)
+    if verification is None:
         return
 
-    pending_courses: Optional[List[Dict[str, Any]]] = None
-    session_start_time = time.time()
-    session_duration_seconds = SESSION_DURATION_MINUTES * 60
+    # Admission: no awaits between the check and the increment, so the count can't be overshot
+    if _open_conversations >= MAX_CONVERSATIONS:
+        await websocket.send(json.dumps({"error": "Server is at capacity. Please try again shortly."}))
+        await websocket.close(1013, "Server at capacity")
+        return
+    _open_conversations += 1
 
-    # Reject new connection if one is already active
-    async with ACTIVE_WEBSOCKET_LOCK:
-        if ACTIVE_WEBSOCKET is not None and ACTIVE_WEBSOCKET != websocket:
-            await websocket.send(json.dumps({"error": "A connection is already active. Only one connection permitted at a time."}))
-            return
-        ACTIVE_WEBSOCKET = websocket
-
-    async def send(frame: Dict[str, Any]) -> None:
-        await websocket.send(json.dumps(frame))
-
+    closed = asyncio.ensure_future(websocket.wait_closed())
     try:
-        # Each connection is its own conversation
-        await reset_conversation()
-        await websocket.send(json.dumps({"status": "verified"}))
+        try:
+            conversation = await start_conversation(verification)
+        except Exception as exc:  # noqa: BLE001 - e.g. missing Canvas or model configuration
+            await websocket.send(json.dumps({"error": str(exc)}))
+            await websocket.close(1011, "Agent unavailable")
+            return
+
+        async def send(frame: Dict[str, Any]) -> None:
+            await websocket.send(json.dumps(frame))
+
+        session_start_time = time.time()
+        session_duration_seconds = SESSION_DURATION_MINUTES * 60
+        await send({"status": "verified"})
         async for raw_message in websocket:
             # Check if session duration has been exceeded
             elapsed_time = time.time() - session_start_time
@@ -371,18 +423,25 @@ async def websocket_handler(websocket: WebSocketServerProtocol) -> None:
                 await websocket.send(json.dumps({"error": "Invalid JSON payload."}))
                 continue
 
+            # One message at a time: the next isn't read until this one is answered. If the client leaves
+            # mid-answer, the work it owns (agent run, download job) is cancelled rather than left running.
+            work = asyncio.ensure_future(_run_request(handle_message(conversation, payload, send)))
+            await asyncio.wait({work, closed}, return_when=asyncio.FIRST_COMPLETED)
+            if not work.done():
+                work.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await work
+                break
             try:
-                response, pending_courses = await handle_message(payload, pending_courses, send)
+                response = work.result()
             except Exception as exc:
-                pending_courses = None
+                conversation.pending_courses = None
                 response = {"error": str(exc)}
 
             await websocket.send(json.dumps(response))
     finally:
-        # Clear active websocket if this was the active connection
-        async with ACTIVE_WEBSOCKET_LOCK:
-            if ACTIVE_WEBSOCKET == websocket:
-                ACTIVE_WEBSOCKET = None
+        closed.cancel()
+        _open_conversations -= 1
 
 
 async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:

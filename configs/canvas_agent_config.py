@@ -4,6 +4,8 @@ Canvas Student Agent configuration.
 Defines an agent tailored for student access to Canvas LMS with the complete Canvas API toolset available to student accounts.
 """
 
+from typing import Optional
+
 from src.tools.canvas_tools import (
     CanvasListCourses,
     CanvasGetAssignments,
@@ -33,6 +35,45 @@ from src.tools.canvas_tools import (
     VectorStoreGetFile,
 )
 from src.tools.latex_tools import CheckLatex
+from src.canvas_account import CanvasAccount
+
+
+def build_tools(account: Optional[CanvasAccount] = None) -> list:
+    """A fresh set of every Canvas tool available to students, calling Canvas as `account`.
+
+    The WebSocket server builds one set per conversation so no two students share a tool. Without an account
+    the tools read CANVAS_URL / CANVAS_ACCESS_TOKEN on every request (the command-line entry points).
+    """
+    return [
+        CanvasListCourses(account),       # List enrolled courses
+        CanvasGetAssignments(account),    # Retrieve assignments
+        CanvasSubmitAssignment(account),  # Submit an assignment (never reaches live Canvas: blocked, or recorded in sandbox)
+        CanvasGetModules(account),        # Retrieve course modules
+        CanvasGetModuleItems(account),    # Retrieve module items
+        CanvasGetFiles(account),          # List course files
+        CanvasGetFileInfo(account),       # Retrieve file details
+        CanvasReadFile(account),          # Read a file's text (sandbox: from the downloaded copy)
+        CanvasGetFolders(account),        # List folders
+        CanvasGetFolderFiles(account),    # List files inside a folder
+        CanvasSearchFiles(account),       # Search files by keyword
+        CanvasGetDiscussions(account),    # Retrieve discussions
+        CanvasPostDiscussion(account),    # Post a discussion reply (never reaches live Canvas: blocked, or recorded in sandbox)
+        CanvasGetAnnouncements(account),  # Retrieve announcements
+        CanvasGetCalendarEvents(account), # Retrieve calendar events
+        CanvasGetGrades(account),         # Retrieve grades
+        CanvasGetPages(account),          # List course pages
+        CanvasGetPageContent(account),    # Retrieve page content
+        CanvasGetQuizzes(account),        # List quizzes
+        CanvasGetTodoItems(account),      # Retrieve to-do items
+        CanvasGetUpcomingEvents(account), # Retrieve upcoming events
+        CanvasGetGroups(account),         # List groups
+        VectorStoreList(account),         # List knowledge bases
+        VectorStoreSearch(account),       # Search knowledge bases
+        VectorStoreListFiles(account),    # List files inside a knowledge base
+        VectorStoreGetFile(account),      # Read the contents of a file
+        CheckLatex(),                     # Compile math / chemfig the way the student will see it
+    ]
+
 
 # Canvas student agent configuration
 canvas_student_agent_config = dict(
@@ -51,36 +92,8 @@ canvas_student_agent_config = dict(
     ),
     template_path="src/agent/general_agent/prompts/general_agent.yaml",  # Prompt template path
     
-    # Initialize every Canvas tool available to students
-    tools=[
-        CanvasListCourses(),              # List enrolled courses
-        CanvasGetAssignments(),           # Retrieve assignments
-        CanvasSubmitAssignment(),         # Submit an assignment (never reaches live Canvas: blocked, or recorded in sandbox)
-        CanvasGetModules(),               # Retrieve course modules
-        CanvasGetModuleItems(),           # Retrieve module items
-        CanvasGetFiles(),                 # List course files
-        CanvasGetFileInfo(),              # Retrieve file details
-        CanvasReadFile(),                 # Read a file's text (sandbox: from the downloaded copy)
-        CanvasGetFolders(),               # List folders
-        CanvasGetFolderFiles(),           # List files inside a folder
-        CanvasSearchFiles(),              # Search files by keyword
-        CanvasGetDiscussions(),           # Retrieve discussions
-        CanvasPostDiscussion(),           # Post a discussion reply (never reaches live Canvas: blocked, or recorded in sandbox)
-        CanvasGetAnnouncements(),         # Retrieve announcements
-        CanvasGetCalendarEvents(),        # Retrieve calendar events
-        CanvasGetGrades(),                # Retrieve grades
-        CanvasGetPages(),                 # List course pages
-        CanvasGetPageContent(),           # Retrieve page content
-        CanvasGetQuizzes(),               # List quizzes
-        CanvasGetTodoItems(),             # Retrieve to-do items
-        CanvasGetUpcomingEvents(),        # Retrieve upcoming events
-        CanvasGetGroups(),                # List groups
-        VectorStoreList(),                # List knowledge bases
-        VectorStoreSearch(),              # Search knowledge bases
-        VectorStoreListFiles(),           # List files inside a knowledge base
-        VectorStoreGetFile(),             # Read the contents of a file
-        CheckLatex(),                     # Compile math / chemfig the way the student will see it
-    ],
+    # Every Canvas tool available to students (the WebSocket server builds its own per conversation)
+    tools=build_tools(),
     
     # Customize the system prompt here or edit src/agent/general_agent/prompts/general_agent.yaml
 )

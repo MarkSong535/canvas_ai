@@ -28,6 +28,9 @@ from src.models.openaillm import OpenAIServerModel  # noqa: E402
 from src.registry import AGENT  # noqa: E402
 from src.tools import AsyncTool, ToolResult  # noqa: E402
 from src.utils import latex_svg  # noqa: E402
+from src.canvas_account import CanvasAccount  # noqa: E402
+
+TEST_ACCOUNT = CanvasAccount(key="test", url="https://canvas.example.com", token="test-token")
 
 USAGE = NS(prompt_tokens=10, completion_tokens=5)
 
@@ -206,22 +209,19 @@ def test_websocket_chat_streams_frames_and_reset_clears_memory():
         [chunk(tool=(0, "c2", "final_answer_tool", '{"answer": "Two co')), chunk(tool=(0, None, None, 'urses."}')),
          chunk(usage=USAGE)],
     ])
-    ws_server._AGENT_CACHE = agent
+    conversation = ws_server.Conversation(account=TEST_ACCOUNT, agent=agent)
     frames = []
 
     async def send(frame):
         frames.append(json.loads(json.dumps(frame)))  # frames must be JSON-serializable
 
     async def run():
-        chat, _ = await ws_server.handle_message({"type": "chat", "query": "courses?"}, None, send)
+        chat = await ws_server.handle_message(conversation, {"type": "chat", "query": "courses?"}, send)
         assert len(agent.memory.steps) > 0
-        reset, _ = await ws_server.handle_message({"type": "reset"}, None, send)
+        reset = await ws_server.handle_message(conversation, {"type": "reset"}, send)
         return chat, reset
 
-    try:
-        chat, reset = asyncio.run(run())
-    finally:
-        ws_server._AGENT_CACHE = None
+    chat, reset = asyncio.run(run())
     assert chat == {"type": "answer", "answer": "Two courses.", "renders": {}, "can_escalate": False}
     assert frames[0] == {"type": "tool", "name": "canvas_list_courses"}
     assert "".join(f["text"] for f in frames if f["type"] == "delta") == "Two courses."

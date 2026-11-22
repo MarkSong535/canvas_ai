@@ -13,6 +13,8 @@ from pathlib import Path
 from datetime import datetime
 import json
 import time
+import weakref
+from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
 from dotenv import load_dotenv
@@ -21,6 +23,8 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, DownloadColumn, Tr
 from rich.table import Table
 from rich.panel import Panel
 from rich.tree import Tree
+
+from src.canvas_account import CanvasAccount
 
 try:
     from openai import OpenAI
@@ -35,10 +39,8 @@ load_dotenv()
 
 console = Console()
 
-# Root directory for downloaded artifacts
+# Root directory for downloaded artifacts of the shared (environment-configured) account
 DOWNLOAD_ROOT = Path("file_index")
-
-# Aggregated download statistics
 
 
 def _initial_stats():
@@ -57,39 +59,44 @@ def _initial_stats():
     }
 
 
-stats = _initial_stats()
+@dataclass
+class DownloadJob:
+    """One download run: whose Canvas it reads, which courses, where files go, and its own counters.
 
-# Automation controls (used when driven programmatically)
-AUTO_MODE = False
-AUTO_SELECTED_COURSE_IDS: Optional[Set[int]] = None
-AUTO_CONFIRM = True
+    Nothing about a run is kept in module state, so jobs for different students can overlap. Jobs that write the
+    same folder take turns (see `_root_lock`).
+    """
+
+    account: Optional[CanvasAccount] = None  # None: CANVAS_URL / CANVAS_ACCESS_TOKEN (command line)
+    course_ids: Optional[Set[int]] = None  # automated selection; None selects every course
+    auto_mode: bool = False  # True: no prompts (driven by the WebSocket server)
+    auto_confirm: bool = True
+    stats: dict = field(default_factory=_initial_stats)
+
+    @classmethod
+    def automated(cls, account: Optional[CanvasAccount], course_ids: Optional[List[int]] = None,
+                  auto_confirm: bool = True) -> "DownloadJob":
+        return cls(account=account, course_ids={int(cid) for cid in course_ids} if course_ids else None,
+                   auto_mode=True, auto_confirm=auto_confirm)
+
+    @property
+    def root(self) -> Path:
+        return self.account.storage_root if self.account is not None else DOWNLOAD_ROOT
+
+    def credentials(self):
+        if self.account is not None:
+            return self.account.base_url, self.account.token
+        return os.getenv("CANVAS_URL"), os.getenv("CANVAS_ACCESS_TOKEN")
 
 
-def configure_automation(course_ids: Optional[List[int]] = None, auto_confirm: bool = True) -> None:
-    """Enable automation mode so the downloader can run without prompts."""
-
-    global AUTO_MODE, AUTO_SELECTED_COURSE_IDS, AUTO_CONFIRM
-
-    AUTO_MODE = True
-    AUTO_SELECTED_COURSE_IDS = set(int(cid) for cid in course_ids) if course_ids else None
-    AUTO_CONFIRM = auto_confirm
+# One lock per output folder (per event loop): overlapping jobs for one student would otherwise write the same
+# files and vector store mapping at once
+_ROOT_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict]" = weakref.WeakKeyDictionary()
 
 
-def clear_automation() -> None:
-    """Disable automation mode and restore defaults."""
-
-    global AUTO_MODE, AUTO_SELECTED_COURSE_IDS, AUTO_CONFIRM
-
-    AUTO_MODE = False
-    AUTO_SELECTED_COURSE_IDS = None
-    AUTO_CONFIRM = True
-
-
-def reset_stats() -> None:
-    """Reset run statistics between automated invocations."""
-
-    global stats
-    stats = _initial_stats()
+def _root_lock(root: Path) -> asyncio.Lock:
+    locks = _ROOT_LOCKS.setdefault(asyncio.get_running_loop(), {})
+    return locks.setdefault(root.resolve(), asyncio.Lock())
 
 # Vector Store configuration
 SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.json', '.csv'}
@@ -166,8 +173,9 @@ async def fetch_all_pages(session, url, headers, params=None, *, raise_on_error=
     return all_data
 
 
-async def download_file(session, file_info, file_path):
+async def download_file(job, session, file_info, file_path):
     """Download a single file payload."""
+    stats = job.stats
     file_url = file_info.get('url')
     file_name = file_info.get('display_name', 'unnamed')
     file_size = file_info.get('size', 0)
@@ -216,16 +224,16 @@ async def get_courses(session, canvas_url, headers):
     return courses
 
 
-def select_courses(courses):
+def select_courses(job, courses):
     """Prompt the user to select courses to download."""
     if not courses:
         return []
 
-    if AUTO_MODE:
-        if AUTO_SELECTED_COURSE_IDS is None:
+    if job.auto_mode:
+        if job.course_ids is None:
             return courses
 
-        selected = [course for course in courses if course.get('id') in AUTO_SELECTED_COURSE_IDS]
+        selected = [course for course in courses if course.get('id') in job.course_ids]
         return selected
 
     console.print("Enter course indices using one of the formats below:", style="cyan")
@@ -349,8 +357,9 @@ def can_upload_to_vector_store(file_path: Path) -> bool:
     return True
 
 
-def upload_to_vector_store(client, vector_store_id, file_path, course_name):
+def upload_to_vector_store(job, client, vector_store_id, file_path, course_name):
     """Upload a file to the specified Vector Store."""
+    stats = job.stats
     try:
         with open(file_path, 'rb') as f:
             file_response = client.files.create(
@@ -377,17 +386,19 @@ def upload_to_vector_store(client, vector_store_id, file_path, course_name):
         return False, str(e)
 
 
-def create_vector_store_for_course(client, course_name, course_code):
-    """Create a dedicated Vector Store for the course."""
+def create_vector_store_for_course(job, client, course_name, course_code):
+    """Create a dedicated Vector Store for the course, owned by the job's account."""
     try:
         vector_store_name = f"{course_code}_{course_name}" if course_code else course_name
 
         # Use the production Vector Store API (not the beta endpoints)
+        owner = job.account.vector_store_metadata if job.account is not None else None
         vector_store = client.vector_stores.create(
-            name=vector_store_name[:100]  # Enforce OpenAI naming limits
+            name=vector_store_name[:100],  # Enforce OpenAI naming limits
+            **({"metadata": owner} if owner else {}),
         )
         
-        stats["vector_stores_created"] += 1
+        job.stats["vector_stores_created"] += 1
         return vector_store.id
         
     except AttributeError as e:
@@ -401,14 +412,15 @@ def create_vector_store_for_course(client, course_name, course_code):
         return None
 
 
-async def process_course(session, canvas_url, headers, course, progress, task_id):
+async def process_course(job, session, canvas_url, headers, course, progress, task_id):
     """Download files for a single course and update aggregate statistics."""
+    stats = job.stats
     course_id = course['id']
     course_name = sanitize_filename(course.get('name', f'Course_{course_id}'))
     course_code = course.get('course_code', '')
     
     # Create a folder dedicated to this course
-    course_path = DOWNLOAD_ROOT / f"{course_code}_{course_name}" if course_code else DOWNLOAD_ROOT / course_name
+    course_path = job.root / f"{course_code}_{course_name}" if course_code else job.root / course_name
     course_path.mkdir(parents=True, exist_ok=True)
     
     progress.update(task_id, description=f"[cyan]Processing course: {course_name}")
@@ -447,7 +459,7 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
                         file_name = sanitize_filename(file_info.get('display_name', 'unnamed'))
                         file_path = module_path / file_name
                         
-                        success, msg = await download_file(session, file_info, file_path)
+                        success, msg = await download_file(job, session, file_info, file_path)
                         
                         if success:
                             course_stats["files_from_modules"] += 1
@@ -471,7 +483,7 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
     # Files area assets live under a dedicated folder
         file_path = course_path / "Files" / file_name
         
-        success, msg = await download_file(session, file_info, file_path)
+        success, msg = await download_file(job, session, file_info, file_path)
         
         if success:
             course_stats["files_from_files"] += 1
@@ -492,12 +504,23 @@ async def process_course(session, canvas_url, headers, course, progress, task_id
     return course_stats
 
 
-async def main(skip_download=False):
+async def main(skip_download=False, job: Optional[DownloadJob] = None) -> DownloadJob:
     """Drive the download workflow and optional Vector Store upload.
 
     Args:
         skip_download: When True, skip downloading and upload existing files only.
+        job: The run's account, selections and counters (default: an interactive run for the environment's
+            account). Returned with its stats filled in.
     """
+    job = job or DownloadJob()
+    async with _root_lock(job.root):
+        await _run(job, skip_download)
+    return job
+
+
+async def _run(job: DownloadJob, skip_download: bool) -> None:
+    stats = job.stats
+    DOWNLOAD_ROOT = job.root
 
     # Display banner
     console.print("\n" + "="*70, style="cyan bold")
@@ -508,8 +531,7 @@ async def main(skip_download=False):
     console.print("="*70 + "\n", style="cyan bold")
     
     # Validate required environment variables
-    canvas_url = os.getenv("CANVAS_URL")
-    canvas_token = os.getenv("CANVAS_ACCESS_TOKEN")
+    canvas_url, canvas_token = job.credentials()
     openai_api_key = os.getenv("OPENAI_API_KEY")
     
     if not canvas_url or not canvas_token:
@@ -548,7 +570,7 @@ async def main(skip_download=False):
                 # Verify Vector Stores API access with a lightweight call
                 try:
                     # Validate that the production vector_stores API is reachable
-                    test_list = openai_client.vector_stores.list(limit=1)
+                    test_list = await asyncio.to_thread(openai_client.vector_stores.list, limit=1)
                     console.print("✓ Vector Stores API reachable", style="green")
                     upload_to_openai = True
                 except AttributeError as ae:
@@ -609,15 +631,15 @@ async def main(skip_download=False):
                 console.print(f"  {i}. {course.get('name', 'N/A')} (ID: {course['id']})", style="dim")
             console.print()
 
-            courses = select_courses(courses)
+            courses = select_courses(job, courses)
             if not courses:
                 console.print("⚠️  No courses selected for download", style="yellow")
                 return
             
             # Confirm before proceeding
             console.print(f"Downloading all files for {len(courses)} course(s)", style="yellow bold")
-            if AUTO_MODE:
-                response = 'y' if AUTO_CONFIRM else 'n'
+            if job.auto_mode:
+                response = 'y' if job.auto_confirm else 'n'
             else:
                 response = console.input("Continue? (y/n): ")
 
@@ -641,7 +663,7 @@ async def main(skip_download=False):
                 
                 for course in courses:
                     course_stats = await process_course(
-                        session, canvas_url, headers, course, progress, main_task
+                        job, session, canvas_url, headers, course, progress, main_task
                     )
                     
                     progress.update(main_task, advance=1)
@@ -697,7 +719,7 @@ async def main(skip_download=False):
                     progress.update(upload_task, description=f"[magenta]Processing: {course_name[:40]}")
                     
                     # Create one Vector Store per course
-                    vector_store_id = create_vector_store_for_course(openai_client, course_name, "")
+                    vector_store_id = await asyncio.to_thread(create_vector_store_for_course, job, openai_client, course_name, "")
                     
                     if vector_store_id:
                         vector_stores_info[course_name] = {
@@ -707,7 +729,9 @@ async def main(skip_download=False):
                         
                         # Upload each supported file
                         for file_path in files:
-                            success, file_id = upload_to_vector_store(
+                            success, file_id = await asyncio.to_thread(
+                                upload_to_vector_store,
+                                job,
                                 openai_client,
                                 vector_store_id,
                                 file_path,
@@ -825,8 +849,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     skip_download = args.upload_only or args.skip_download
     
+    job = DownloadJob()
+    stats = job.stats
     try:
-        asyncio.run(main(skip_download=skip_download))
+        asyncio.run(main(skip_download=skip_download, job=job))
     except KeyboardInterrupt:
         console.print("\n\n⚠️  Operation interrupted by user", style="yellow")
         if stats['files_downloaded'] > 0:
